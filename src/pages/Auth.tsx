@@ -7,27 +7,74 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
+import { authAPI } from "@/lib/api";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.id]: e.target.value,
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Simulate API call - replace with actual backend integration
-    setTimeout(() => {
-      setIsLoading(false);
+
+    try {
+      if (!isLogin && formData.password !== formData.confirmPassword) {
+        toast({
+          title: "Error",
+          description: "Passwords don't match",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      let response;
+      if (isLogin) {
+        response = await authAPI.login({
+          email: formData.email,
+          password: formData.password,
+        });
+      } else {
+        response = await authAPI.register({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        });
+      }
+
+      // Store token
+      localStorage.setItem('token', response.data.token);
+      
       toast({
         title: isLogin ? "Welcome back!" : "Account created!",
         description: isLogin ? "You've been signed in successfully." : "Your account has been created successfully.",
       });
-      // Navigate to dashboard after successful auth
+      
       navigate("/dashboard");
-    }, 1500);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,6 +109,8 @@ const Auth = () => {
                     id="name" 
                     type="text" 
                     placeholder="John Doe" 
+                    value={formData.name}
+                    onChange={handleInputChange}
                     required 
                   />
                 </div>
@@ -73,6 +122,8 @@ const Auth = () => {
                   id="email" 
                   type="email" 
                   placeholder="john@example.com" 
+                  value={formData.email}
+                  onChange={handleInputChange}
                   required 
                 />
               </div>
@@ -83,6 +134,8 @@ const Auth = () => {
                   id="password" 
                   type="password" 
                   placeholder="••••••••" 
+                  value={formData.password}
+                  onChange={handleInputChange}
                   required 
                 />
               </div>
@@ -94,6 +147,8 @@ const Auth = () => {
                     id="confirmPassword" 
                     type="password" 
                     placeholder="••••••••" 
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
                     required 
                   />
                 </div>

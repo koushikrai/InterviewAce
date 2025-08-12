@@ -9,7 +9,7 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Navigation */}
       <nav className="container mx-auto px-6 py-4 flex justify-between items-center">
-        <div className="text-2xl font-bold text-gray-900">InterviewAce</div>
+        <div className="text-2xl font-bold text-gray-900">InterviewAce.</div>
         <div className="flex gap-4">
           <Link to="/auth">
             <Button variant="ghost">Sign In</Button>

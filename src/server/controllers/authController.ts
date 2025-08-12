@@ -1,0 +1,11 @@
+export const register = (req, res) => {
+  res.json({ message: 'Register controller' });
+};
+
+export const login = (req, res) => {
+  res.json({ message: 'Login controller' });
+};
+
+export const getMe = (req, res) => {
+  res.json({ message: 'GetMe controller' });
+}; 

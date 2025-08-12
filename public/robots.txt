@@ -12,3 +12,10 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+User-agent: *
+Disallow: /dashboard
+Disallow: /api
+
+
+Crawl-delay: 10

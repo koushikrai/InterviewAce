@@ -14,6 +14,8 @@ const Upload = () => {
   const [uploadStep, setUploadStep] = useState<'upload' | 'analyzing' | 'results'>('upload');
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   const { toast } = useToast();
 
   const handleFileUpload = (e: React.FormEvent) => {
@@ -67,18 +69,37 @@ const Upload = () => {
         <form onSubmit={handleFileUpload} className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="resume">Resume (PDF, DOCX)</Label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
-              <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            {/* <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
+              <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" /> */}
+              <div className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              selectedFile 
+                ? 'border-green-400 bg-green-50' 
+                : 'border-gray-300 hover:border-blue-400'
+            }`}>
+              {selectedFile ? (
+                <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
+              ) : (
+                <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              )}
               <Input
                 id="resume"
                 type="file"
                 accept=".pdf,.docx,.doc"
                 className="hidden"
                 required
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
               />
               <Label htmlFor="resume" className="cursor-pointer">
-                <span className="text-blue-600 hover:text-blue-800">Click to upload resume</span>
-                <span className="text-gray-600"> or drag and drop</span>
+                {/* <span className="text-blue-600 hover:text-blue-800">Click to upload resume</span>
+                <span className="text-gray-600"> or drag and drop</span> */}
+                {selectedFile ? (
+                  <span className="text-green-600 font-medium">File uploaded: {selectedFile.name}</span>
+                ) : (
+                  <>
+                    <span className="text-blue-600 hover:text-blue-800">Click to upload resume</span>
+                    <span className="text-gray-600"> or drag and drop</span>
+                  </>
+                )}
               </Label>
               <p className="text-sm text-gray-500 mt-2">PDF, DOCX up to 10MB</p>
             </div>
