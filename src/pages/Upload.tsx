@@ -22,6 +22,20 @@ const Upload = () => {
     improvements: string[];
     keywordMatch?: number;
     suggestions: string[];
+    skillGaps?: string[];
+    atsScore?: {
+      overall: number;
+      technical: number;
+      soft: number;
+      formatting: number;
+    };
+    jobMatch?: {
+      skillsMatch: number;
+      experienceMatch: boolean;
+      educationMatch: boolean;
+      overallMatch: boolean;
+    };
+    note?: string;
   };
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -243,12 +257,117 @@ const Upload = () => {
             <div className="text-4xl font-bold text-blue-600">{analysisResults.score}%</div>
             <div>
               <p className="text-lg font-semibold">Overall Resume Score</p>
-              <p className="text-gray-600">Good foundation with room for improvement</p>
+              <p className="text-gray-600">
+                {analysisResults.score >= 80 ? 'Excellent! Your resume is well-optimized' :
+                 analysisResults.score >= 60 ? 'Good foundation with room for improvement' :
+                 'Needs significant improvement to pass ATS screening'}
+              </p>
             </div>
           </div>
           <Progress value={analysisResults.score} className="w-full" />
+          
+          {/* ATS Score Breakdown */}
+          {analysisResults.atsScore && (
+            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-lg font-bold text-blue-600">{analysisResults.atsScore.overall}%</div>
+                <div className="text-xs text-gray-600">Overall</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-lg font-bold text-green-600">{analysisResults.atsScore.technical}%</div>
+                <div className="text-xs text-gray-600">Technical</div>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-lg font-bold text-purple-600">{analysisResults.atsScore.soft}%</div>
+                <div className="text-xs text-gray-600">Soft Skills</div>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <div className="text-lg font-bold text-orange-600">{analysisResults.atsScore.formatting}%</div>
+                <div className="text-xs text-gray-600">Formatting</div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Job Matching Analysis */}
+      {analysisResults.jobMatch && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-blue-600" />
+              Job Requirements Match
+            </CardTitle>
+            <CardDescription>
+              How well your resume aligns with the job description
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Skills Match</span>
+                  <span className="text-lg font-bold text-blue-600">{analysisResults.jobMatch.skillsMatch}%</span>
+                </div>
+                <Progress value={analysisResults.jobMatch.skillsMatch} className="w-full" />
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Experience Level</span>
+                  <span className={`text-sm font-medium ${analysisResults.jobMatch.experienceMatch ? 'text-green-600' : 'text-orange-600'}`}>
+                    {analysisResults.jobMatch.experienceMatch ? '✓ Matched' : '⚠ Needs More'}
+                  </span>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Education</span>
+                  <span className={`text-sm font-medium ${analysisResults.jobMatch.educationMatch ? 'text-green-600' : 'text-orange-600'}`}>
+                    {analysisResults.jobMatch.educationMatch ? '✓ Matched' : '⚠ Check Requirements'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-800 mb-2">
+                    {analysisResults.jobMatch.overallMatch ? 'Strong Match' : 'Needs Work'}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {analysisResults.jobMatch.overallMatch 
+                      ? 'Your resume aligns well with this position' 
+                      : 'Consider tailoring your resume for better alignment'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Keyword Match */}
+      {analysisResults.keywordMatch && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Keyword Optimization</CardTitle>
+            <CardDescription>
+              ATS keyword matching score for better visibility
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="text-3xl font-bold text-blue-600">{analysisResults.keywordMatch}%</div>
+              <div>
+                <p className="text-lg font-semibold">Keyword Match</p>
+                <p className="text-gray-600">
+                  {analysisResults.keywordMatch >= 80 ? 'Excellent keyword optimization' :
+                   analysisResults.keywordMatch >= 60 ? 'Good keyword coverage' :
+                   'Low keyword match - needs improvement'}
+                </p>
+              </div>
+            </div>
+            <Progress value={analysisResults.keywordMatch} className="w-full" />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Strengths */}
@@ -286,6 +405,30 @@ const Upload = () => {
         </Card>
       </div>
 
+      {/* Skill Gaps */}
+      {analysisResults.skillGaps && analysisResults.skillGaps.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-600">Identified Skill Gaps</CardTitle>
+            <CardDescription>
+              Skills mentioned in the job description that are missing from your resume
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 gap-4">
+              {analysisResults.skillGaps.map((gap: string, index: number) => (
+                <div key={index} className="p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600" />
+                    <span className="text-sm font-medium">{gap}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Detailed Suggestions */}
       <Card>
         <CardHeader>
@@ -304,6 +447,18 @@ const Upload = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Note about job description */}
+      {analysisResults.note && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-blue-600">💡 Pro Tip</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-700">{analysisResults.note}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Action Buttons */}
       <div className="flex gap-4 justify-center">

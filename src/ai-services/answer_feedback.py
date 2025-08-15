@@ -27,72 +27,50 @@ async def feedback(request: Request):
         answer = data.get("answer", "")
         job_title = data.get("jobTitle", "Software Engineer")
         question_category = data.get("category", "general")
-        
-        # Use genai to evaluate the answer
         model = genai.GenerativeModel('gemini-pro')
+        print(f"Evaluating answer for: {question[:50]}...")
+        print(f"Answer length: {len(answer)} characters")
+                
+        # For now, return simple feedback without calling Gemini (to test communication)
+        # This matches the format the backend expects
+        simple_feedback = {
+            "score": 75,  # Default score
+            "feedback": f"Good answer for a {question_category} question. You provided relevant information and showed understanding of the topic.",
+            "suggestions": [
+                "Consider adding specific examples to strengthen your response",
+                "Try to quantify your achievements when possible",
+                "Make sure your answer directly addresses the question asked"
+            ],
+            "keywords": ["relevant", "understanding", "examples"],
+            "sentiment": "positive",
+            "breakdown": {
+                "accuracy": 80,
+                "completeness": 70,
+                "clarity": 75,
+                "relevance": 80
+            },
+            "categories": {
+                "technical": 70,
+                "communication": 80,
+                "problemSolving": 75,
+                "confidence": 75
+            }
+        }
         
-        prompt = f"""
-        Evaluate this interview answer for a {job_title} position.
+        print(f"Returning feedback with score: {simple_feedback['score']}")
+        return JSONResponse({
+            "success": True,
+            "score": simple_feedback["score"],
+            "feedback": simple_feedback["feedback"],
+            "suggestions": simple_feedback["suggestions"],
+            "keywords": simple_feedback["keywords"],
+            "sentiment": simple_feedback["sentiment"],
+            "breakdown": simple_feedback["breakdown"],
+            "categories": simple_feedback["categories"]
+        })
         
-        Question: {question}
-        Question Category: {question_category}
-        Candidate's Answer: {answer}
-        
-        Provide a comprehensive evaluation with the following structure:
-        {{
-            "score": 0-100,
-            "feedback": "detailed feedback on the answer",
-            "suggestions": ["specific improvement suggestions"],
-            "keywords": ["key terms mentioned"],
-            "sentiment": "positive|neutral|negative",
-            "breakdown": {{
-                "accuracy": 0-100,
-                "completeness": 0-100,
-                "clarity": 0-100,
-                "relevance": 0-100
-            }},
-            "categories": {{
-                "technical": 0-100,
-                "communication": 0-100,
-                "problemSolving": 0-100,
-                "confidence": 0-100
-            }}
-        }}
-        
-        Consider:
-        - Technical accuracy for technical questions
-        - Communication clarity and structure
-        - Problem-solving approach
-        - Confidence and assertiveness
-        - Relevance to the question asked
-        - Completeness of the answer
-        """
-        
-        response = model.generate_content(prompt)
-        
-        # Parse the response as JSON
-        try:
-            evaluation = json.loads(response.text)
-            return JSONResponse({
-                "success": True,
-                "score": evaluation.get("score", 0),
-                "feedback": evaluation.get("feedback", ""),
-                "suggestions": evaluation.get("suggestions", []),
-                "keywords": evaluation.get("keywords", []),
-                "sentiment": evaluation.get("sentiment", "neutral"),
-                "breakdown": evaluation.get("breakdown", {}),
-                "categories": evaluation.get("categories", {})
-            })
-        except json.JSONDecodeError:
-            # Fallback if JSON parsing fails
-            return JSONResponse({
-                "success": False,
-                "error": "Failed to parse AI response as JSON",
-                "score": 0,
-                "feedback": "Unable to evaluate answer due to technical issues."
-            })
-            
     except Exception as e:
+        print(f"Error in feedback: {str(e)}")
         return JSONResponse({
             "success": False,
             "error": str(e),
@@ -102,4 +80,9 @@ async def feedback(request: Request):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "answer-feedback"} 
+    return {"status": "healthy", "service": "answer-feedback"}
+
+@app.get("/test")
+async def test_endpoint():
+    """Simple test endpoint to verify communication"""
+    return {"message": "Answer feedback service is working!", "timestamp": "2025-08-15"} 

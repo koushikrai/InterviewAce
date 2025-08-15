@@ -28,57 +28,53 @@ async def generate_questions(request: Request):
         difficulty = data.get("difficulty", "medium")
         num_questions = data.get("numQuestions", 5)
         
-        # Use genai to generate interview questions
-        model = genai.GenerativeModel('gemini-pro')
+        print(f"Generating questions for: {job_title}")
+        print(f"Resume data keys: {list(resume_data.keys()) if resume_data else 'None'}")
         
-        prompt = f"""
-        Generate {num_questions} interview questions for a {job_title} position.
-        The questions should be {difficulty} difficulty level.
-        
-        Resume context:
-        - Skills: {resume_data.get('skills', [])}
-        - Experience: {resume_data.get('experience', [])}
-        - Education: {resume_data.get('education', [])}
-        
-        Generate questions that cover:
-        1. Technical skills relevant to {job_title}
-        2. Problem-solving scenarios
-        3. Behavioral questions
-        4. Experience-based questions
-        
-        Return a JSON array of questions with this structure:
-        [
-            {{
-                "id": "unique_id",
-                "question": "question text",
-                "category": "technical|behavioral|problem-solving",
-                "difficulty": "easy|medium|hard",
-                "expectedAnswer": "brief description of what a good answer should include"
-            }}
-        ]
-        """
-        
-        response = model.generate_content(prompt)
-        
-        # Parse the response as JSON
-        try:
-            questions = json.loads(response.text)
-            return JSONResponse({
-                "success": True,
-                "questions": questions,
-                "jobTitle": job_title,
+        # For now, return simple questions without calling Gemini (to test communication)
+        # This matches the format the backend expects
+        simple_questions = [
+            {
+                "id": "1",
+                "question": f"Tell me about your experience with {job_title} roles and what interests you about this position.",
+                "category": "behavioral",
                 "difficulty": difficulty,
-                "count": len(questions)
-            })
-        except json.JSONDecodeError:
-            # Fallback if JSON parsing fails
-            return JSONResponse({
-                "success": False,
-                "error": "Failed to parse AI response as JSON",
-                "questions": []
-            })
-            
+                "expectedAnswer": "Discuss relevant experience and motivation for the role"
+            },
+            {
+                "id": "2", 
+                "question": f"Describe a challenging project you worked on that's relevant to {job_title} positions.",
+                "category": "technical",
+                "difficulty": difficulty,
+                "expectedAnswer": "Explain the problem, your approach, and the outcome"
+            },
+            {
+                "id": "3",
+                "question": "What are your greatest strengths and how do they apply to this position?",
+                "category": "behavioral",
+                "difficulty": difficulty,
+                "expectedAnswer": "Identify 2-3 key strengths with specific examples"
+            },
+            {
+                "id": "4",
+                "question": "Where do you see yourself in 5 years in your {job_title} career?",
+                "category": "career",
+                "difficulty": difficulty,
+                "expectedAnswer": "Show career progression and alignment with company goals"
+            }
+        ]
+        
+        print(f"Returning {len(simple_questions)} questions")
+        return JSONResponse({
+            "success": True,
+            "questions": simple_questions,
+            "jobTitle": job_title,
+            "difficulty": difficulty,
+            "count": len(simple_questions)
+        })
+        
     except Exception as e:
+        print(f"Error in generate_questions: {str(e)}")
         return JSONResponse({
             "success": False,
             "error": str(e),
@@ -87,4 +83,9 @@ async def generate_questions(request: Request):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "interview-generator"} 
+    return {"status": "healthy", "service": "interview-generator"}
+
+@app.get("/test")
+async def test_endpoint():
+    """Simple test endpoint to verify communication"""
+    return {"message": "Interview generator is working!", "timestamp": "2025-08-15"} 
