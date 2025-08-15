@@ -10,7 +10,7 @@ export interface IInterviewSession extends Document {
 }
 
 const InterviewSessionSchema = new Schema<IInterviewSession>({
-  userId: { type: Schema.Types.ObjectId, ref: 'User' },
+  userId: { type: Schema.Types.ObjectId, ref: 'User' }, // add the "required : true" when everything is working perfectly
   createdAt: { type: Date, default: Date.now },
   jobTitle: { type: String, required: true },
   mode: { type: String, enum: ['text', 'voice'], required: true },

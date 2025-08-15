@@ -5,6 +5,9 @@ import google.generativeai as genai
 import os
 from typing import Dict, Any
 import json
+import PyPDF2
+from docx import Document
+import io
 
 # Configure genai
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -19,76 +22,84 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def extract_text_from_pdf(file_content: bytes) -> str:
+    """Extract text content from PDF file"""
+    try:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        return f"Error extracting PDF text: {str(e)}"
+
+def extract_text_from_docx(file_content: bytes) -> str:
+    """Extract text content from DOCX file"""
+    try:
+        doc = Document(io.BytesIO(file_content))
+        text = ""
+        for paragraph in doc.paragraphs:
+            text += paragraph.text + "\n"
+        return text.strip()
+    except Exception as e:
+        return f"Error extracting DOCX text: {str(e)}"
+
+def extract_text_from_file(file_content: bytes, filename: str) -> str:
+    """Extract text content from various file types"""
+    file_extension = filename.lower().split('.')[-1]
+    
+    if file_extension == 'pdf':
+        return extract_text_from_pdf(file_content)
+    elif file_extension in ['docx', 'doc']:
+        return extract_text_from_docx(file_content)
+    else:
+        # Try to decode as text for other file types
+        try:
+            return file_content.decode('utf-8')
+        except UnicodeDecodeError:
+            return f"Unsupported file type: {file_extension}"
+
 @app.post("/parse")
 async def parse_resume(file: UploadFile = File(...)):
     try:
+        print(f"Processing file: {file.filename}, size: {len(await file.read())} bytes")
+        # Reset file position
+        await file.seek(0)
+        
         # Read file content
         content = await file.read()
-        text_content = content.decode('utf-8')
         
-        # Use genai to parse resume
-        model = genai.GenerativeModel('gemini-pro')
+        # Extract text content based on file type
+        text_content = extract_text_from_file(content, file.filename)
         
-        prompt = f"""
-        Parse the following resume and extract structured information. 
-        Return a JSON object with the following structure:
-        {{
-            "personalInfo": {{
-                "name": "string",
-                "email": "string", 
-                "phone": "string",
-                "location": "string"
-            }},
-            "summary": "string",
-            "experience": [
-                {{
-                    "title": "string",
-                    "company": "string",
-                    "duration": "string",
-                    "description": ["string"]
-                }}
-            ],
-            "education": [
-                {{
-                    "degree": "string",
-                    "institution": "string",
-                    "year": "string"
-                }}
-            ],
-            "skills": ["string"],
-            "certifications": ["string"],
-            "projects": [
-                {{
-                    "name": "string",
-                    "description": "string",
-                    "technologies": ["string"]
-                }}
-            ]
-        }}
+        print(f"Extracted text length: {len(text_content)} characters")
+        print(f"Text preview: {text_content[:200]}...")
         
-        Resume content:
-        {text_content}
-        """
-        
-        response = model.generate_content(prompt)
-        
-        # Parse the response as JSON
-        try:
-            parsed_data = json.loads(response.text)
-            return JSONResponse({
-                "success": True,
-                "data": parsed_data,
-                "confidence": 0.85
-            })
-        except json.JSONDecodeError:
-            # Fallback if JSON parsing fails
+        # Check if text extraction was successful
+        if text_content.startswith("Error extracting") or text_content.startswith("Unsupported file type"):
+            print(f"Text extraction failed: {text_content}")
             return JSONResponse({
                 "success": False,
-                "error": "Failed to parse AI response as JSON",
+                "error": text_content,
                 "confidence": 0.0
             })
-            
+        
+        # For now, return a simple response without calling Gemini (to test communication)
+        print("Returning simple response for testing")
+        return JSONResponse({
+            "success": True,
+            "data": {
+                "personalInfo": {"name": "Test User", "email": "test@example.com"},
+                "skills": ["Python", "JavaScript", "React"],
+                "experience": [],
+                "education": [],
+                "projects": []
+            },
+            "confidence": 0.85
+        })
+        
     except Exception as e:
+        print(f"Error in parse_resume: {str(e)}")
         return JSONResponse({
             "success": False,
             "error": str(e),
@@ -97,4 +108,9 @@ async def parse_resume(file: UploadFile = File(...)):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "resume-parser"} 
+    return {"status": "healthy", "service": "resume-parser"}
+
+@app.get("/test")
+async def test_endpoint():
+    """Simple test endpoint to verify communication"""
+    return {"message": "Python service is working!", "timestamp": "2025-08-15"} 

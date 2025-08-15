@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { connectDB } from './db.js';
+import { checkAIServiceHealth } from './services/aiService.js';
 import authRoutes from './routes/authRoutes.js';
 import interviewRoutes from './routes/interviewRoutes.js';
 import resumeRoutes from './routes/resumeRoutes.js';
@@ -40,6 +41,24 @@ app.get('/', (req, res) => {
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// AI Services Health Check
+app.get('/health/ai', async (req, res) => {
+  try {
+    const aiHealth = await checkAIServiceHealth();
+    res.json({
+      status: 'OK',
+      timestamp: new Date().toISOString(),
+      aiServices: aiHealth
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      timestamp: new Date().toISOString(),
+      error: 'Failed to check AI services health'
+    });
+  }
 });
 
 // API Routes
