@@ -253,3 +253,7 @@ Voice Integration APIs (Google)
 Speech-to-Text: Used in frontend or Node backend
 
 Text-to-Speech: Request via frontend or backend to convert AI feedback to voice
+
+
+// used to generate jwt token 
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"

@@ -1,7 +1,9 @@
+<<<<<<< HEAD
 ## Interview Preparation and Resume Enhancement Platform 
 
 
 ## What technologies are used for this project?
+=======
 
 This project is built with:
 
