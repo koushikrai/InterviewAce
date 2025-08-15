@@ -1,4 +1,4 @@
-import { genai } from 'genai';
+import google_generative as  genai ;
 
 // Configure genai with API key
 const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;

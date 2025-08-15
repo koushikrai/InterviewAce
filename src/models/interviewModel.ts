@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IInterviewSession extends Document {
-  userId: mongoose.Types.ObjectId;
+  userId?: mongoose.Types.ObjectId;
   createdAt: Date;
   jobTitle: string;
   mode: string;
@@ -10,7 +10,7 @@ export interface IInterviewSession extends Document {
 }
 
 const InterviewSessionSchema = new Schema<IInterviewSession>({
-  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  userId: { type: Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now },
   jobTitle: { type: String, required: true },
   mode: { type: String, enum: ['text', 'voice'], required: true },

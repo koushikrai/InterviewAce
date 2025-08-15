@@ -1,5 +1,5 @@
 # AI Services Dependencies
-genai==0.1.0
+google_generativeai==0.8.5
 google-cloud-speech==2.21.0
 google-cloud-texttospeech==2.16.0
 
@@ -15,6 +15,9 @@ python-dotenv==1.0.0
 requests==2.31.0
 
 # Optional: For enhanced resume parsing
-spacy==3.7.2
+#spacy==3.7.2 pip install spacy --no-build-isolation
 python-docx==1.1.0
 PyPDF2==3.0.1 
+
+
+#python -c "import os; from dotenv import load_dotenv; load_dotenv(); print('GEMINI_API_KEY found:', 'Yes' if os.getenv('GEMINI_API_KEY') else 'No')"  to test if the .env is read

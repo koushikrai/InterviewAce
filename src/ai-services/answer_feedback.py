@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import genai
+import google.generativeai as genai
 import os
 from typing import Dict, Any
 import json
