@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "nodemon --watch src/server --exec \"npx tsx src/server/app.ts\"",
+    "dev:server": "nodemon --watch src/server --watch src/models --ext ts,tsx,js,mjs,cjs,json --exec \"npx tsx src/server/app.ts\"",
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",

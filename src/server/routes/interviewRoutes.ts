@@ -1,17 +1,10 @@
 import { Router } from 'express';
+import { getSession, startInterview, submitAnswer } from '../controllers/interviewController.js';
 
 const router = Router();
 
-router.post('/start', (req, res) => {
-  res.json({ message: 'Interview start endpoint' });
-});
+router.post('/start', startInterview);
+router.post('/answer', submitAnswer);
+router.get('/:sessionId', getSession);
 
-router.post('/answer', (req, res) => {
-  res.json({ message: 'Interview answer endpoint' });
-});
-
-router.get('/:sessionId', (req, res) => {
-  res.json({ message: `Get interview session ${req.params.sessionId}` });
-});
-
-export default router; 
+export default router;

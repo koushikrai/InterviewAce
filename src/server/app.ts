@@ -5,6 +5,8 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { connectDB } from './db.js';
 import authRoutes from './routes/authRoutes.js';
+import interviewRoutes from './routes/interviewRoutes.js';
+import resumeRoutes from './routes/resumeRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -34,6 +36,8 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/auth', authRoutes);
+app.use('/interview', interviewRoutes);
+app.use('/resume', resumeRoutes);
 
 // Start server
 const startServer = async () => {

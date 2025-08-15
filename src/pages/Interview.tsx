@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Mic, MicOff, Play, Pause, SkipForward, MessageSquare, Volume2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DashboardNav from "@/components/DashboardNav";
+import { interviewAPI } from "@/lib/api";
+import { withApiFallback } from "@/lib/apiFallback";
 
 const Interview = () => {
   const [interviewStep, setInterviewStep] = useState<'setup' | 'active' | 'feedback'>('setup');
@@ -16,9 +18,10 @@ const Interview = () => {
   const [selectedRole, setSelectedRole] = useState("");
   const [interviewMode, setInterviewMode] = useState<'text' | 'voice'>('text');
   const [userAnswer, setUserAnswer] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const questions = [
+  const dummyQuestions = [
     {
       id: 1,
       question: "Tell me about yourself and why you're interested in this role.",
@@ -45,7 +48,9 @@ const Interview = () => {
     }
   ];
 
-  const startInterview = () => {
+  const [questions, setQuestions] = useState(dummyQuestions);
+
+  const startInterview = async () => {
     if (!selectedRole) {
       toast({
         title: "Please select a role",
@@ -54,10 +59,32 @@ const Interview = () => {
       });
       return;
     }
-    setInterviewStep('active');
+    try {
+      const response = await withApiFallback(
+        () => interviewAPI.start({ jobTitle: selectedRole, mode: interviewMode }),
+        null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { isUnreachable: (error: any) => !error?.response || [404, 501, 503].includes(error?.response?.status) }
+      );
+
+      if (!response) {
+        setInterviewStep('active');
+        setQuestions(dummyQuestions);
+        return;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (response as any).data;
+      setSessionId(data?.sessionId || null);
+      setQuestions(Array.isArray(data?.questions) && data.questions.length > 0 ? data.questions : dummyQuestions);
+      setInterviewStep('active');
+    } catch {
+      setInterviewStep('active');
+      setQuestions(dummyQuestions);
+    }
   };
 
-  const handleAnswerSubmit = () => {
+  const handleAnswerSubmit = async () => {
     if (!userAnswer.trim()) {
       toast({
         title: "Please provide an answer",
@@ -65,6 +92,19 @@ const Interview = () => {
         variant: "destructive"
       });
       return;
+    }
+    // Try to send answer to backend, ignore network failures
+    if (sessionId) {
+      await withApiFallback(
+        () => interviewAPI.answer({
+          sessionId,
+          questionId: String(questions[currentQuestion].id ?? currentQuestion + 1),
+          userAnswer,
+        }),
+        null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { isUnreachable: (error: any) => !error?.response }
+      );
     }
 
     if (currentQuestion < questions.length - 1) {

@@ -9,49 +9,120 @@ import { Progress } from "@/components/ui/progress";
 import { Upload as UploadIcon, FileText, CheckCircle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DashboardNav from "@/components/DashboardNav";
+import { resumeAPI } from "@/lib/api";
+import { withApiFallback } from "@/lib/apiFallback";
+import type { AxiosResponse } from "axios";
 
 const Upload = () => {
   const [uploadStep, setUploadStep] = useState<'upload' | 'analyzing' | 'results'>('upload');
   const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [analysisResults, setAnalysisResults] = useState<any>(null);
+  type AnalysisResults = {
+    score: number;
+    strengths: string[];
+    improvements: string[];
+    keywordMatch?: number;
+    suggestions: string[];
+  };
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [jobDescription, setJobDescription] = useState("");
 
   const { toast } = useToast();
 
-  const handleFileUpload = (e: React.FormEvent) => {
+  const handleFileUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    setUploadStep('analyzing');
-    
-    // Simulate analysis progress
-    const interval = setInterval(() => {
-      setAnalysisProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setUploadStep('results');
-          setAnalysisResults({
-            score: 78,
-            strengths: [
-              "Strong technical skills section",
-              "Clear work experience progression", 
-              "Relevant education background"
-            ],
-            improvements: [
-              "Add more quantifiable achievements",
-              "Include relevant keywords for the target role",
-              "Expand on project descriptions"
-            ],
-            keywordMatch: 65,
-            suggestions: [
-              "Add 'React.js' and 'Node.js' to skills section",
-              "Include metrics in job descriptions (e.g., 'Improved performance by 25%')",
-              "Add a professional summary section"
-            ]
-          });
-          return 100;
-        }
-        return prev + 10;
+
+    if (!selectedFile) {
+      toast({
+        title: "Resume required",
+        description: "Please select a file to upload.",
+        variant: "destructive",
       });
-    }, 300);
+      return;
+    }
+
+    const runSimulation = () => {
+      setUploadStep('analyzing');
+      const interval = setInterval(() => {
+        setAnalysisProgress((prev) => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            setUploadStep('results');
+            setAnalysisResults({
+              score: 78,
+              strengths: [
+                "Strong technical skills section",
+                "Clear work experience progression", 
+                "Relevant education background"
+              ],
+              improvements: [
+                "Add more quantifiable achievements",
+                "Include relevant keywords for the target role",
+                "Expand on project descriptions"
+              ],
+              keywordMatch: 65,
+              suggestions: [
+                "Add 'React.js' and 'Node.js' to skills section",
+                "Include metrics in job descriptions (e.g., 'Improved performance by 25%')",
+                "Add a professional summary section"
+              ]
+            });
+            return 100;
+          }
+          return prev + 10;
+        });
+      }, 300);
+    };
+
+    try {
+      // Try real API path first
+      const formData = new FormData();
+      formData.append('resume', selectedFile);
+
+      type UploadResponse = { id?: string; resumeId?: string };
+      const uploadResponse = await withApiFallback<AxiosResponse<UploadResponse> | null>(
+        () => resumeAPI.upload(formData) as Promise<AxiosResponse<UploadResponse>>,
+        null,
+        {
+          isUnreachable: (error: unknown) => {
+            const hasResponse = typeof error === 'object' && error !== null && 'response' in error;
+            const status = hasResponse ? (error as { response?: { status?: number } }).response?.status : undefined;
+            return !hasResponse || status === 404 || status === 501 || status === 503;
+          },
+        }
+      );
+
+      if (!uploadResponse) {
+        runSimulation();
+        return;
+      }
+
+      const uploadedId = uploadResponse.data.id ?? uploadResponse.data.resumeId ?? "";
+
+      const analyzeResponse = await withApiFallback<AxiosResponse<AnalysisResults> | null>(
+        () => resumeAPI.analyze(uploadedId, jobDescription) as Promise<AxiosResponse<AnalysisResults>>,
+        null,
+        {
+          isUnreachable: (error: unknown) => {
+            const hasResponse = typeof error === 'object' && error !== null && 'response' in error;
+            const status = hasResponse ? (error as { response?: { status?: number } }).response?.status : undefined;
+            return !hasResponse || status === 404 || status === 501 || status === 503;
+          },
+        }
+      );
+
+      if (!analyzeResponse || typeof analyzeResponse.data?.score !== 'number') {
+        runSimulation();
+        return;
+      }
+
+      setUploadStep('analyzing');
+      setAnalysisProgress(100);
+      setAnalysisResults(analyzeResponse.data);
+      setUploadStep('results');
+    } catch (error) {
+      runSimulation();
+    }
   };
 
   const UploadForm = () => (
@@ -66,7 +137,7 @@ const Upload = () => {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleFileUpload} className="space-y-6">
+        <form onSubmit={handleFileUpload} noValidate className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="resume">Resume (PDF, DOCX)</Label>
             {/* <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
@@ -83,10 +154,10 @@ const Upload = () => {
               )}
               <Input
                 id="resume"
+                name="resume"
                 type="file"
                 accept=".pdf,.docx,.doc"
                 className="hidden"
-                required
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
               />
               <Label htmlFor="resume" className="cursor-pointer">
@@ -112,6 +183,8 @@ const Upload = () => {
               placeholder="Paste the job description here to get targeted feedback..."
               rows={6}
               className="resize-none"
+              value={jobDescription}
+              onChange={(e) => setJobDescription(e.target.value)}
             />
             <p className="text-sm text-gray-500">
               Adding a job description helps us provide more targeted suggestions
