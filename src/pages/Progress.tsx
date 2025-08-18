@@ -1,42 +1,76 @@
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrendingUp, Target, Calendar, Award } from "lucide-react";
 import DashboardNav from "@/components/DashboardNav";
+import { progressAPI, authAPI } from "@/lib/api";
+import { Link } from "react-router-dom";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Line, LineChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
+interface SkillItem { skill: string; current: number; target: number; improvement: number }
+interface RecentSession { id: string; date: string; role: string; score: number; duration?: string; improvement?: string }
 
 const Progress = () => {
-  const overallStats = {
-    totalSessions: 15,
-    averageScore: 78,
-    improvement: 23,
-    streak: 7
-  };
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [overallStats, setOverallStats] = useState({ totalSessions: 0, averageScore: 0, improvement: 0, streak: 0 });
+  const [skillBreakdown, setSkillBreakdown] = useState<SkillItem[]>([]);
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
 
-  const skillBreakdown = [
-    { skill: "Communication", current: 85, target: 90, improvement: 15 },
-    { skill: "Technical Knowledge", current: 72, target: 85, improvement: 8 },
-    { skill: "Problem Solving", current: 80, target: 88, improvement: 20 },
-    { skill: "Leadership", current: 68, target: 80, improvement: 12 },
-    { skill: "Confidence", current: 82, target: 90, improvement: 18 }
-  ];
-
-  const recentSessions = [
-    { id: 1, date: "2024-01-15", role: "Software Engineer", score: 85, duration: "15 min", improvement: "+8%" },
-    { id: 2, date: "2024-01-14", role: "Product Manager", score: 72, duration: "12 min", improvement: "+5%" },
-    { id: 3, date: "2024-01-13", role: "Data Scientist", score: 79, duration: "18 min", improvement: "+12%" },
-    { id: 4, date: "2024-01-12", role: "Software Engineer", score: 77, duration: "14 min", improvement: "+3%" },
-    { id: 5, date: "2024-01-11", role: "Product Manager", score: 68, duration: "16 min", improvement: "+7%" }
-  ];
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const me = await authAPI.me();
+        const id = me?.data?.user?._id ?? me?.data?._id ?? null;
+        if (!id) { setLoading(false); return; }
+        setUserId(id);
+        const progressResp = await progressAPI.getUserProgress(id, '30d');
+        const p = progressResp.data;
+        const totalSessions = p?.overallProgress?.totalInterviews ?? 0;
+        const averageScore = p?.overallProgress?.averageScore ?? 0;
+        const improvement = p?.overallProgress?.improvementRate ?? 0;
+        // Map skill breakdown
+        const skills: SkillItem[] = [];
+        if (p?.skillBreakdown) {
+          if (p.skillBreakdown.communication) skills.push({ skill: 'Communication', current: p.skillBreakdown.communication.score ?? 0, target: 90, improvement: 0 });
+          if (p.skillBreakdown.technical) skills.push({ skill: 'Technical Knowledge', current: p.skillBreakdown.technical.score ?? 0, target: 85, improvement: 0 });
+          if (p.skillBreakdown.behavioral) skills.push({ skill: 'Behavioral', current: p.skillBreakdown.behavioral.score ?? 0, target: 85, improvement: 0 });
+        }
+        // Recent sessions
+        const sessions: RecentSession[] = (p?.recentSessions ?? []).map((s: { id?: string; _id?: string; jobTitle?: string; date?: string; overallScore?: number }) => ({
+          id: String(s.id ?? s._id ?? ''),
+          date: new Date(s.date || Date.now()).toISOString().slice(0, 10),
+          role: s.jobTitle ?? 'Interview',
+          score: s.overallScore ?? 0,
+          duration: undefined,
+          improvement: undefined,
+        }));
+        setOverallStats({ totalSessions, averageScore, improvement, streak: 0 });
+        setSkillBreakdown(skills);
+        setRecentSessions(sessions);
+      } catch {
+        // Keep defaults on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    void run();
+  }, []);
 
   const achievements = [
-    { id: 1, title: "First Interview", description: "Completed your first mock interview", earned: true, date: "2024-01-08" },
-    { id: 2, title: "Streak Master", description: "Practiced for 7 consecutive days", earned: true, date: "2024-01-15" },
-    { id: 3, title: "Score Improver", description: "Improved score by 20% in one month", earned: true, date: "2024-01-12" },
-    { id: 4, title: "Multi-Role Expert", description: "Practice 5 different job roles", earned: false, progress: 3 },
-    { id: 5, title: "Perfect Score", description: "Achieve a score of 95% or higher", earned: false, progress: 85 }
+    { id: 1, title: "First Interview", description: "Completed your first mock interview", earned: (overallStats.totalSessions > 0), date: new Date().toISOString().slice(0,10) },
+    { id: 2, title: "Streak Master", description: "Practiced for 7 consecutive days", earned: false, date: "" },
+    { id: 3, title: "Score Improver", description: "Improved score by 20% in one month", earned: false, date: "" },
+    { id: 4, title: "Multi-Role Expert", description: "Practice 5 different job roles", earned: false, progress: Math.min(overallStats.totalSessions, 5) },
+    { id: 5, title: "Perfect Score", description: "Achieve a score of 95% or higher", earned: overallStats.averageScore >= 95, progress: overallStats.averageScore }
   ];
+
+  const trendData = recentSessions.map(s => ({ date: s.date, score: s.score }));
+  const memoTrend = trendData; // small list; if it grows, wrap with useMemo
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -79,6 +113,29 @@ const Progress = () => {
           </Card>
         </div>
 
+        {/* Trend Chart */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Score Trend</CardTitle>
+            <CardDescription>Recent session scores over time</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {trendData.length === 0 ? (
+              <p className="text-sm text-gray-500">No data yet.</p>
+            ) : (
+              <ChartContainer config={{ score: { label: 'Score', color: 'hsl(var(--primary))' } }}>
+                <LineChart data={memoTrend as Array<{ date: string; score: number }>}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line type="monotone" dataKey="score" stroke="var(--color-score)" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+
         <Tabs defaultValue="skills" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="skills">Skill Breakdown</TabsTrigger>
@@ -98,17 +155,16 @@ const Progress = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {skillBreakdown.length === 0 && (
+                  <p className="text-sm text-gray-500">No data yet. Complete an interview to see your skill breakdown.</p>
+                )}
                 {skillBreakdown.map((skill) => (
                   <div key={skill.skill} className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="font-medium">{skill.skill}</span>
                       <div className="flex items-center gap-4">
-                        <span className="text-sm text-gray-600">
-                          {skill.current}% / {skill.target}%
-                        </span>
-                        <Badge variant="secondary" className="text-green-600">
-                          +{skill.improvement}%
-                        </Badge>
+                        <span className="text-sm text-gray-600">{skill.current}% / {skill.target}%</span>
+                        <Badge variant="secondary" className="text-green-600">+{skill.improvement}%</Badge>
                       </div>
                     </div>
                     <ProgressBar value={skill.current} className="h-2" />
@@ -129,12 +185,13 @@ const Progress = () => {
                   <Calendar className="w-5 h-5" />
                   Recent Sessions
                 </CardTitle>
-                <CardDescription>
-                  Your latest interview practice sessions and scores
-                </CardDescription>
+                <CardDescription>Your latest interview practice sessions and scores</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
+                  {recentSessions.length === 0 && (
+                    <p className="text-sm text-gray-500">No sessions yet.</p>
+                  )}
                   {recentSessions.map((session) => (
                     <div key={session.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-4">
@@ -143,17 +200,12 @@ const Progress = () => {
                         </div>
                         <div>
                           <h4 className="font-medium text-gray-900">{session.role}</h4>
-                          <p className="text-sm text-gray-600">{session.date} • {session.duration}</p>
+                          <p className="text-sm text-gray-600">{session.date}{session.duration ? ` • ${session.duration}` : ''}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg font-semibold">{session.score}%</span>
-                          <Badge variant="secondary" className="text-green-600">
-                            {session.improvement}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-gray-500">vs last session</p>
+                        <div className="text-lg font-semibold">{session.score}%</div>
+                        <Badge variant="secondary" className="text-green-600">Score</Badge>
                       </div>
                     </div>
                   ))}
@@ -169,48 +221,32 @@ const Progress = () => {
                   <Award className="w-5 h-5" />
                   Achievements
                 </CardTitle>
-                <CardDescription>
-                  Unlock badges and celebrate your milestones
-                </CardDescription>
+                <CardDescription>Unlock badges and celebrate your milestones</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid md:grid-cols-2 gap-4">
                   {achievements.map((achievement) => (
-                    <div 
-                      key={achievement.id} 
-                      className={`p-4 rounded-lg border-2 ${
-                        achievement.earned 
-                          ? 'bg-green-50 border-green-200' 
-                          : 'bg-gray-50 border-gray-200'
-                      }`}
-                    >
+                    <div key={achievement.id} className={`p-4 rounded-lg border-2 ${achievement.earned ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
                       <div className="flex items-center gap-3 mb-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          achievement.earned ? 'bg-green-600' : 'bg-gray-400'
-                        }`}>
+                        <div className={`${achievement.earned ? 'bg-green-600' : 'bg-gray-400'} w-8 h-8 rounded-full flex items-center justify-center`}>
                           <Award className="w-4 h-4 text-white" />
                         </div>
                         <div className="flex-1">
                           <h4 className="font-medium text-gray-900">{achievement.title}</h4>
                           {achievement.earned && (
-                            <p className="text-xs text-green-600">Earned on {achievement.date}</p>
+                            <p className="text-xs text-green-600">{achievement.date ? `Earned on ${achievement.date}` : 'Earned'}</p>
                           )}
                         </div>
-                        {achievement.earned && (
-                          <Badge className="bg-green-600">Earned</Badge>
-                        )}
+                        {achievement.earned && <Badge className="bg-green-600">Earned</Badge>}
                       </div>
                       <p className="text-sm text-gray-600 mb-2">{achievement.description}</p>
-                      {!achievement.earned && achievement.progress && (
+                      {!achievement.earned && (achievement as { progress?: number }).progress && (
                         <div className="space-y-1">
                           <div className="flex justify-between text-xs">
                             <span>Progress</span>
-                            <span>{achievement.progress}/{achievement.id === 4 ? 5 : 95}</span>
+                            <span>{(achievement as { progress?: number }).progress}/{achievement.id === 4 ? 5 : 95}</span>
                           </div>
-                          <ProgressBar 
-                            value={achievement.id === 4 ? (achievement.progress / 5) * 100 : (achievement.progress / 95) * 100} 
-                            className="h-1"
-                          />
+                          <ProgressBar value={achievement.id === 4 ? (((achievement as { progress?: number }).progress || 0) / 5) * 100 : (((achievement as { progress?: number }).progress || 0) / 95) * 100} className="h-1" />
                         </div>
                       )}
                     </div>

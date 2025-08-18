@@ -32,7 +32,4 @@ const userSchema = new mongoose.Schema<IUser>(
   }
 );
 
-// Index for email lookups
-userSchema.index({ email: 1 });
-
 export const User = mongoose.model<IUser>('User', userSchema); 

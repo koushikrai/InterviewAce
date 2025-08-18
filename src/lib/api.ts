@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AxiosRequestConfig } from 'axios';
 
 // Create axios instance with base configuration
 const api = axios.create({
@@ -14,7 +15,10 @@ api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      const existing = (config.headers ?? {}) as Record<string, unknown>;
+      const merged = { ...existing, Authorization: `Bearer ${token}` } as unknown as AxiosRequestConfig['headers'];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).headers = merged;
     }
     return config;
   },
@@ -56,11 +60,18 @@ export const resumeAPI = {
 };
 
 export const interviewAPI = {
-  start: (data: { jobTitle: string; mode: 'text' | 'voice' }) =>
+  start: (data: { jobTitle: string; mode: 'text' | 'voice'; difficulty?: 'easy' | 'medium' | 'hard'; numQuestions?: number; resumeData?: unknown }) =>
     api.post('/interview/start', data),
-  answer: (data: { sessionId: string; questionId: string; userAnswer: string }) =>
-    api.post('/interview/answer', data),
-  getSession: (sessionId: string) => api.get(`/interview/${sessionId}`),
+  submitAnswer: (data: { sessionId: string; question: string; answer: string; questionCategory?: string; difficulty?: 'easy' | 'medium' | 'hard' }) =>
+    api.post('/interview/submit-answer', data),
+  getResults: (sessionId: string) => api.get(`/interview/results/${sessionId}`),
+};
+
+export const progressAPI = {
+  getUserProgress: (userId: string, timeRange: '7d' | '30d' | '90d' | '6m' | '1y' = '30d') =>
+    api.get(`/progress/user/${userId}`, { params: { timeRange } }),
+  getSessionAnalytics: (sessionId: string) =>
+    api.get(`/progress/session/${sessionId}`),
 };
 
 export default api; 

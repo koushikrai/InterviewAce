@@ -5,66 +5,79 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
-import { Mic, MicOff, Play, Pause, SkipForward, MessageSquare, Volume2 } from "lucide-react";
+import { Mic, MicOff, SkipForward, MessageSquare, Volume2, Clipboard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DashboardNav from "@/components/DashboardNav";
 import { interviewAPI } from "@/lib/api";
 import { withApiFallback } from "@/lib/apiFallback";
+import type { AxiosResponse } from "axios";
+import { useNavigate } from "react-router-dom";
+import api from "@/lib/api";
+
+type QuestionItem = { id: string | number; question: string; type?: string; expectedDuration?: string };
+
+type StartResponse = AxiosResponse<{ sessionId?: string; questions?: QuestionItem[] }>;
+
+type SubmitResponse = AxiosResponse<Record<string, unknown>>;
+
+type PerformanceMetrics = {
+  overallScore: number;
+  communicationScore: number;
+  technicalScore: number;
+  confidenceScore: number;
+};
+
+type FinalResultsType = { session?: { performanceMetrics?: Partial<PerformanceMetrics> } };
+
+type FeedbackResponse = {
+  score?: number;
+  feedback?: string;
+  suggestions?: string[];
+  keywords?: string[];
+  sentiment?: string;
+  categories?: { technical?: number; communication?: number; problemSolving?: number; confidence?: number };
+  breakdown?: { accuracy?: number; completeness?: number; clarity?: number; relevance?: number };
+};
 
 const Interview = () => {
   const [interviewStep, setInterviewStep] = useState<'setup' | 'active' | 'feedback'>('setup');
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [chunks, setChunks] = useState<Blob[]>([]);
+  const [sttBusy, setSttBusy] = useState(false);
+  const [sttTimer, setSttTimer] = useState<number | null>(null);
   const [selectedRole, setSelectedRole] = useState("");
   const [interviewMode, setInterviewMode] = useState<'text' | 'voice'>('text');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [selectedCount, setSelectedCount] = useState<number>(4);
   const [userAnswer, setUserAnswer] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [lastFeedback, setLastFeedback] = useState<{ score: number; feedback: string } | null>(null);
+  const [lastFeedbackDetail, setLastFeedbackDetail] = useState<FeedbackResponse | null>(null);
+  const [finalResults, setFinalResults] = useState<FinalResultsType | null>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const dummyQuestions = [
-    {
-      id: 1,
-      question: "Tell me about yourself and why you're interested in this role.",
-      type: "behavioral",
-      expectedDuration: "2-3 minutes"
-    },
-    {
-      id: 2,
-      question: "Describe a challenging project you worked on and how you overcame obstacles.",
-      type: "behavioral", 
-      expectedDuration: "3-4 minutes"
-    },
-    {
-      id: 3,
-      question: "What are your greatest strengths and how do they apply to this position?",
-      type: "behavioral",
-      expectedDuration: "2-3 minutes"
-    },
-    {
-      id: 4,
-      question: "Where do you see yourself in 5 years?",
-      type: "career",
-      expectedDuration: "2 minutes"
-    }
+  const dummyQuestions: QuestionItem[] = [
+    { id: 1, question: "Tell me about yourself and why you're interested in this role.", type: "behavioral", expectedDuration: "2-3 minutes" },
+    { id: 2, question: "Describe a challenging project you worked on and how you overcame obstacles.", type: "behavioral", expectedDuration: "3-4 minutes" },
+    { id: 3, question: "What are your greatest strengths and how do they apply to this position?", type: "behavioral", expectedDuration: "2-3 minutes" },
+    { id: 4, question: "Where do you see yourself in 5 years?", type: "career", expectedDuration: "2 minutes" },
   ];
 
-  const [questions, setQuestions] = useState(dummyQuestions);
+  const [questions, setQuestions] = useState<QuestionItem[]>(dummyQuestions);
 
   const startInterview = async () => {
     if (!selectedRole) {
-      toast({
-        title: "Please select a role",
-        description: "Choose the type of role you're interviewing for.",
-        variant: "destructive"
-      });
+      toast({ title: "Please select a role", description: "Choose the type of role you're interviewing for.", variant: "destructive" });
       return;
     }
     try {
-      const response = await withApiFallback(
-        () => interviewAPI.start({ jobTitle: selectedRole, mode: interviewMode }),
+      const response = await withApiFallback<StartResponse | null>(
+        () => interviewAPI.start({ jobTitle: selectedRole, mode: interviewMode, difficulty: selectedDifficulty, numQuestions: selectedCount }) as Promise<StartResponse>,
         null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { isUnreachable: (error: any) => !error?.response || [404, 501, 503].includes(error?.response?.status) }
+        { isUnreachable: (error: unknown) => !(error as { response?: { status?: number } })?.response || [404, 501, 503].includes((error as { response?: { status?: number } })?.response?.status ?? 0) }
       );
 
       if (!response) {
@@ -73,8 +86,7 @@ const Interview = () => {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const data = (response as any).data;
+      const data = response.data;
       setSessionId(data?.sessionId || null);
       setQuestions(Array.isArray(data?.questions) && data.questions.length > 0 ? data.questions : dummyQuestions);
       setInterviewStep('active');
@@ -86,48 +98,112 @@ const Interview = () => {
 
   const handleAnswerSubmit = async () => {
     if (!userAnswer.trim()) {
-      toast({
-        title: "Please provide an answer",
-        description: "Record or type your response before proceeding.",
-        variant: "destructive"
-      });
+      toast({ title: "Please provide an answer", description: "Record or type your response before proceeding.", variant: "destructive" });
       return;
     }
+    setLastFeedback(null);
+    setLastFeedbackDetail(null);
+
     // Try to send answer to backend, ignore network failures
     if (sessionId) {
-      await withApiFallback(
-        () => interviewAPI.answer({
+      const currentQ = questions[currentQuestion];
+      const submitResp = await withApiFallback<SubmitResponse | null>(
+        () => interviewAPI.submitAnswer({
           sessionId,
-          questionId: String(questions[currentQuestion].id ?? currentQuestion + 1),
-          userAnswer,
-        }),
+          question: String(currentQ?.question ?? `Q${currentQuestion + 1}`),
+          answer: userAnswer,
+          questionCategory: String((currentQ as { type?: string })?.type ?? 'general'),
+          difficulty: 'medium',
+        }) as Promise<SubmitResponse>,
         null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { isUnreachable: (error: any) => !error?.response }
+        { isUnreachable: (error: unknown) => !(error as { response?: unknown })?.response }
       );
+      if (submitResp?.data) {
+        const d = submitResp.data as unknown as Record<string, unknown>;
+        const nested = (d.feedback as Record<string, unknown> | undefined) ?? (d as Record<string, unknown>);
+        const scoreVal = typeof d.score === 'number' ? (d.score as number) : (typeof nested?.score === 'number' ? (nested.score as number) : 0);
+        const feedbackText = typeof d.feedback === 'string'
+          ? (d.feedback as string)
+          : (typeof nested?.feedback === 'string' ? (nested.feedback as string) : '');
+        setLastFeedback({ score: scoreVal, feedback: feedbackText });
+        setLastFeedbackDetail({
+          score: scoreVal,
+          feedback: feedbackText,
+          suggestions: Array.isArray(nested?.suggestions) ? (nested?.suggestions as string[]) : [],
+          keywords: Array.isArray(nested?.keywords) ? (nested?.keywords as string[]) : [],
+          sentiment: typeof nested?.sentiment === 'string' ? (nested?.sentiment as string) : undefined,
+          categories: (nested?.categories as FeedbackResponse['categories']) || undefined,
+          breakdown: (nested?.breakdown as FeedbackResponse['breakdown']) || undefined,
+        });
+      }
     }
 
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
       setUserAnswer("");
     } else {
+      // Fetch session results then move to feedback view
+      if (sessionId) {
+        const results = await withApiFallback<AxiosResponse<FinalResultsType> | null>(
+          () => interviewAPI.getResults(sessionId) as Promise<AxiosResponse<FinalResultsType>>,
+          null,
+          { isUnreachable: (error: unknown) => !(error as { response?: unknown })?.response }
+        );
+        if (results?.data) setFinalResults(results.data);
+      }
       setInterviewStep('feedback');
     }
   };
 
   const toggleRecording = () => {
-    setIsRecording(!isRecording);
     if (!isRecording) {
-      toast({
-        title: "Recording started",
-        description: "Speak your answer clearly. Click stop when finished.",
+      // Start recording
+      navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        const mr = new MediaRecorder(stream);
+        const localChunks: Blob[] = [];
+        mr.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            localChunks.push(e.data);
+            setChunks((prev) => [...prev, e.data]);
+            // Debounced send
+            if (sttTimer) window.clearTimeout(sttTimer);
+            const timer = window.setTimeout(() => void sendAudioChunk(localChunks.splice(0, localChunks.length)), 500);
+            setSttTimer(timer);
+          }
+        };
+        mr.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          if (sttTimer) window.clearTimeout(sttTimer);
+        };
+        mr.start(250);
+        setMediaRecorder(mr);
+        setIsRecording(true);
+        toast({ title: "Recording started", description: "Speak your answer clearly. Click stop when finished.", });
+      }).catch(() => {
+        toast({ title: 'Mic access denied', description: 'Please allow microphone permissions.', variant: 'destructive' });
       });
     } else {
-      toast({
-        title: "Recording stopped",
-        description: "Your response has been recorded and transcribed.",
-      });
-      setUserAnswer("This is a simulated transcription of your voice response. In the actual implementation, this would be the real transcribed text from Google Speech-to-Text API.");
+      // Stop recording
+      mediaRecorder?.stop();
+      setIsRecording(false);
+      toast({ title: "Recording stopped", description: "You can edit the transcribed text before submitting.", });
+    }
+  };
+
+  const sendAudioChunk = async (blobParts: Blob[]) => {
+    if (sttBusy || blobParts.length === 0) return;
+    try {
+      setSttBusy(true);
+      const blob = new Blob(blobParts, { type: 'audio/webm' });
+      const form = new FormData();
+      form.append('audio', blob, 'chunk.webm');
+      const resp = await api.post('/interview/stt', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const t = (resp.data?.transcript as string) || '';
+      if (t) setUserAnswer((prev) => (prev ? `${prev} ${t}` : t));
+    } catch {
+      // ignore STT errors in UI
+    } finally {
+      setSttBusy(false);
     }
   };
 
@@ -249,6 +325,35 @@ const Interview = () => {
           </Select>
         </div>
 
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Difficulty</label>
+            <Select value={selectedDifficulty} onValueChange={(v) => setSelectedDifficulty(v as 'easy' | 'medium' | 'hard')}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select difficulty" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="easy">Easy</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="hard">Hard</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Number of Questions</label>
+            <Select value={String(selectedCount)} onValueChange={(v) => setSelectedCount(Number(v))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select count" />
+              </SelectTrigger>
+              <SelectContent>
+                {[3,4,5,6,7,8,9,10].map(n => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <div className="space-y-2">
           <label className="text-sm font-medium">Interview Mode</label>
           <div className="flex gap-4">
@@ -301,9 +406,7 @@ const Interview = () => {
         <CardContent className="pt-6">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-medium">Progress</span>
-            <span className="text-sm text-gray-600">
-              Question {currentQuestion + 1} of {questions.length}
-            </span>
+            <span className="text-sm text-gray-600">Question {currentQuestion + 1} of {questions.length}</span>
           </div>
           <Progress value={(currentQuestion + 1) / questions.length * 100} />
         </CardContent>
@@ -313,12 +416,10 @@ const Interview = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-xl">
-              Question {currentQuestion + 1}
-            </CardTitle>
+            <CardTitle className="text-xl">Question {currentQuestion + 1}</CardTitle>
             <div className="flex gap-2">
-              <Badge variant="secondary">{questions[currentQuestion].type}</Badge>
-              <Badge variant="outline">{questions[currentQuestion].expectedDuration}</Badge>
+              <Badge variant="secondary">{(questions[currentQuestion] as { type?: string })?.type}</Badge>
+              <Badge variant="outline">{(questions[currentQuestion] as { expectedDuration?: string })?.expectedDuration ?? '2-3 minutes'}</Badge>
             </div>
           </div>
           {interviewMode === 'voice' && (
@@ -329,52 +430,26 @@ const Interview = () => {
           )}
         </CardHeader>
         <CardContent>
-          <p className="text-lg leading-relaxed mb-6">
-            {questions[currentQuestion].question}
-          </p>
+          <p className="text-lg leading-relaxed mb-6">{questions[currentQuestion].question}</p>
 
           {/* Answer Input */}
           <div className="space-y-4">
             {interviewMode === 'text' ? (
               <div className="space-y-2">
                 <label className="text-sm font-medium">Your Answer</label>
-                <Textarea
-                  value={userAnswer}
-                  onChange={(e) => setUserAnswer(e.target.value)}
-                  placeholder="Type your response here..."
-                  rows={6}
-                  className="resize-none"
-                />
+                <Textarea value={userAnswer} onChange={(e) => setUserAnswer(e.target.value)} placeholder="Type your response here..." rows={6} className="resize-none" />
               </div>
             ) : (
               <div className="text-center space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Voice Response</label>
                   <div className="flex justify-center">
-                    <Button
-                      size="lg"
-                      variant={isRecording ? "destructive" : "default"}
-                      onClick={toggleRecording}
-                      className="w-32 h-32 rounded-full"
-                    >
-                      {isRecording ? (
-                        <>
-                          <MicOff className="w-8 h-8" />
-                          <span className="sr-only">Stop Recording</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="w-8 h-8" />
-                          <span className="sr-only">Start Recording</span>
-                        </>
-                      )}
+                    <Button size="lg" variant={isRecording ? "destructive" : "default"} onClick={toggleRecording} className="w-32 h-32 rounded-full">
+                      {isRecording ? (<><MicOff className="w-8 h-8" /><span className="sr-only">Stop Recording</span></>) : (<><MessageSquare className="w-8 h-8" /><span className="sr-only">Start Recording</span></>)}
                     </Button>
                   </div>
-                  <p className="text-sm text-gray-600">
-                    {isRecording ? "Recording... Click to stop" : "Click to start recording"}
-                  </p>
+                  <p className="text-sm text-gray-600">{isRecording ? "Recording... Click to stop" : "Click to start recording"}</p>
                 </div>
-                
                 {userAnswer && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg text-left">
                     <label className="text-sm font-medium text-gray-700">Transcription:</label>
@@ -384,19 +459,84 @@ const Interview = () => {
               </div>
             )}
 
-            <div className="flex justify-between pt-4">
-              <Button variant="outline" disabled={currentQuestion === 0}>
-                Previous Question
-              </Button>
-              <Button onClick={handleAnswerSubmit}>
-                {currentQuestion < questions.length - 1 ? (
-                  <>
-                    Next Question <SkipForward className="w-4 h-4 ml-2" />
-                  </>
-                ) : (
-                  "Finish Interview"
+            {/* Inline basic feedback after submission */}
+            {lastFeedback && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-md space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium text-green-700">AI Feedback</div>
+                  <div className="text-sm">
+                    Score: <span className={`${lastFeedback.score >= 80 ? 'text-green-700' : lastFeedback.score >= 60 ? 'text-orange-600' : 'text-red-600'} font-semibold`}>{lastFeedback.score}</span>
+                  </div>
+                </div>
+                <div className="text-sm">{lastFeedback.feedback}</div>
+
+                {lastFeedbackDetail && (
+                  <div className="pt-1 space-y-3">
+                    {/* Sentiment and keywords */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {lastFeedbackDetail.sentiment && (
+                        <Badge variant="outline" className={`${lastFeedbackDetail.sentiment === 'positive' ? 'border-green-300 text-green-700' : lastFeedbackDetail.sentiment === 'negative' ? 'border-red-300 text-red-700' : 'border-gray-300 text-gray-700'}`}>
+                          Sentiment: {lastFeedbackDetail.sentiment}
+                        </Badge>
+                      )}
+                      {(lastFeedbackDetail.keywords ?? []).slice(0, 8).map((k) => (
+                        <Badge key={k} variant="secondary">{k}</Badge>
+                      ))}
+                    </div>
+
+                    {/* Suggestions with copy */}
+                    {(lastFeedbackDetail.suggestions ?? []).length > 0 && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-sm font-medium text-gray-800">Suggestions</div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(lastFeedbackDetail.suggestions!.join("\n"));
+                                toast({ title: 'Copied', description: 'Suggestions copied to clipboard.' });
+                              } catch {
+                                toast({ title: 'Copy failed', description: 'Could not copy suggestions.', variant: 'destructive' });
+                              }
+                            }}
+                            className="h-7 px-2"
+                          >
+                            <Clipboard className="w-4 h-4 mr-1" /> Copy
+                          </Button>
+                        </div>
+                        <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                          {lastFeedbackDetail.suggestions!.slice(0, 4).map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Category scores */}
+                    {lastFeedbackDetail.categories && (
+                      <div className="grid sm:grid-cols-2 gap-3">
+                        {Object.entries(lastFeedbackDetail.categories).map(([label, val]) => {
+                          const v = Number(val ?? 0);
+                          const color = v >= 80 ? 'text-green-700' : v >= 60 ? 'text-orange-600' : 'text-red-600';
+                          return (
+                            <div key={label} className="space-y-1">
+                              <div className="flex justify-between text-xs text-gray-600"><span>{label}</span><span className={`${color}`}>{Math.round(v)}%</span></div>
+                              <Progress value={v} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
-              </Button>
+              </div>
+            )}
+
+            <div className="flex justify-between pt-4">
+              <Button variant="outline" disabled={currentQuestion === 0}>Previous Question</Button>
+              <Button onClick={handleAnswerSubmit}>{currentQuestion < questions.length - 1 ? (<>Next Question <SkipForward className="w-4 h-4 ml-2" /></>) : ("Finish Interview")}</Button>
             </div>
           </div>
         </CardContent>
@@ -409,71 +549,47 @@ const Interview = () => {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl text-center">Interview Complete!</CardTitle>
-          <CardDescription className="text-center">
-            Here's your personalized feedback and performance analysis
-          </CardDescription>
+          <CardDescription className="text-center">Here's your personalized feedback and performance analysis</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600">82%</div>
+              <div className="text-3xl font-bold text-blue-600">{finalResults?.session?.performanceMetrics?.overallScore ?? 0}%</div>
               <p className="text-sm text-gray-600">Overall Score</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">88%</div>
+              <div className="text-3xl font-bold text-green-600">{finalResults?.session?.performanceMetrics?.communicationScore ?? 0}%</div>
               <p className="text-sm text-gray-600">Communication</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600">76%</div>
-              <p className="text-sm text-gray-600">Content Quality</p>
+              <div className="text-3xl font-bold text-purple-600">{finalResults?.session?.performanceMetrics?.technicalScore ?? 0}%</div>
+              <p className="text-sm text-gray-600">Technical</p>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-orange-600">84%</div>
+              <div className="text-3xl font-bold text-orange-600">{finalResults?.session?.performanceMetrics?.confidenceScore ?? 0}%</div>
               <p className="text-sm text-gray-600">Confidence</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-green-600">Strengths</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2 text-sm">
-              <li>• Clear and articulate communication</li>
-              <li>• Good use of specific examples</li>
-              <li>• Confident delivery and tone</li>
-              <li>• Relevant experience highlighted</li>
-            </ul>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-orange-600">Areas for Improvement</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2 text-sm">
-              <li>• Add more quantifiable achievements</li>
-              <li>• Practice concise responses</li>
-              <li>• Include more leadership examples</li>
-              <li>• Prepare stronger closing statements</li>
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-
       <div className="flex gap-4 justify-center">
         <Button onClick={() => {
           setInterviewStep('setup');
           setCurrentQuestion(0);
           setUserAnswer("");
-        }} variant="outline">
-          New Interview
-        </Button>
-        <Button>View Detailed Report</Button>
+          setSessionId(null);
+          setLastFeedback(null);
+          setLastFeedbackDetail(null);
+          setFinalResults(null);
+        }} variant="outline">New Interview</Button>
+        <Button onClick={() => {
+          if (sessionId) {
+            navigate(`/session/${sessionId}`, { state: finalResults ?? undefined });
+          } else {
+            toast({ title: 'Report unavailable', description: 'No session ID found. Please start a new interview.', variant: 'destructive' });
+          }
+        }} disabled={!sessionId}>View Detailed Report</Button>
       </div>
     </div>
   );
@@ -481,13 +597,11 @@ const Interview = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNav />
-      
       <main className="container mx-auto px-6 py-8">
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Mock Interview</h1>
           <p className="text-gray-600">Practice with AI-generated questions and get instant feedback</p>
         </div>
-
         {interviewStep === 'setup' && <InterviewSetup />}
         {interviewStep === 'active' && <ActiveInterview />}
         {interviewStep === 'feedback' && <InterviewFeedback />}

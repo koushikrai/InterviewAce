@@ -1,25 +1,54 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Upload, MessageSquare, BarChart3, FileText, Play, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 import DashboardNav from "@/components/DashboardNav";
+import { authAPI, progressAPI } from "@/lib/api";
 
 const Dashboard = () => {
-  const [stats] = useState({
-    resumesAnalyzed: 3,
-    interviewsSessions: 12,
-    overallScore: 78,
-    improvementRate: 23
+  const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState<string>("User");
+  const [stats, setStats] = useState({
+    resumesAnalyzed: 0,
+    interviewsSessions: 0,
+    overallScore: 0,
+    improvementRate: 0,
   });
+  const [recentSessions, setRecentSessions] = useState<Array<{ id: string; role: string; score: number; date: string; duration?: string }>>([]);
 
-  const recentSessions = [
-    { id: 1, role: "Software Engineer", score: 85, date: "2024-01-15", duration: "15 min" },
-    { id: 2, role: "Product Manager", score: 72, date: "2024-01-14", duration: "12 min" },
-    { id: 3, role: "Data Scientist", score: 79, date: "2024-01-13", duration: "18 min" },
-  ];
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const me = await authAPI.me();
+        const user = me?.data?.user ?? me?.data ?? {};
+        const userId = user?._id ?? user?.id ?? null;
+        if (user?.name) setUserName(user.name);
+        if (!userId) { setLoading(false); return; }
+        const progress = await progressAPI.getUserProgress(userId, '30d');
+        const p = progress.data;
+        const totalSessions = p?.overallProgress?.totalInterviews ?? 0;
+        const averageScore = p?.overallProgress?.averageScore ?? 0;
+        const improvement = p?.overallProgress?.improvementRate ?? 0;
+        setStats({ resumesAnalyzed: 0, interviewsSessions: totalSessions, overallScore: averageScore, improvementRate: improvement });
+        const sessions = (p?.recentSessions ?? []).map((s: any) => ({
+          id: String(s.id ?? s._id ?? ''),
+          role: s.jobTitle ?? 'Interview',
+          score: s.overallScore ?? 0,
+          date: new Date(s.date ?? Date.now()).toISOString().slice(0, 10),
+          duration: undefined,
+        }));
+        setRecentSessions(sessions);
+      } catch {
+        // Keep defaults on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    void run();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -28,7 +57,7 @@ const Dashboard = () => {
       <main className="container mx-auto px-6 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, John!</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {userName}!</h1>
           <p className="text-gray-600">Ready to continue your interview preparation journey?</p>
         </div>
 
@@ -109,7 +138,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-orange-600">+{stats.improvementRate}%</div>
-              <p className="text-sm text-gray-600 mt-1">This month</p>
+              <p className="text-sm text-gray-600 mt-1">This period</p>
             </CardContent>
           </Card>
         </div>
@@ -125,6 +154,9 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {recentSessions.length === 0 && !loading && (
+                <p className="text-sm text-gray-500">No sessions yet.</p>
+              )}
               {recentSessions.map((session) => (
                 <div key={session.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-4">
@@ -133,12 +165,14 @@ const Dashboard = () => {
                     </div>
                     <div>
                       <h4 className="font-medium text-gray-900">{session.role}</h4>
-                      <p className="text-sm text-gray-600">{session.date} • {session.duration}</p>
+                      <p className="text-sm text-gray-600">{session.date}{session.duration ? ` • ${session.duration}` : ''}</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-semibold text-green-600">{session.score}%</div>
-                    <Button variant="ghost" size="sm">View Details</Button>
+                    <Link to={`/session/${session.id}`}>
+                      <Button variant="ghost" size="sm">View Details</Button>
+                    </Link>
                   </div>
                 </div>
               ))}
