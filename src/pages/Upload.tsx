@@ -40,6 +40,7 @@ const Upload = () => {
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [jobDescription, setJobDescription] = useState("");
+  const [isComposingJD, setIsComposingJD] = useState(false);
 
   const { toast } = useToast();
 
@@ -198,7 +199,10 @@ const Upload = () => {
               rows={6}
               className="resize-none"
               value={jobDescription}
-              onChange={(e) => setJobDescription(e.target.value)}
+              onChange={(e) => { if (!isComposingJD) setJobDescription(e.target.value); }}
+              onCompositionStart={() => setIsComposingJD(true)}
+              onCompositionEnd={(e) => { setIsComposingJD(false); setJobDescription((e.target as HTMLTextAreaElement).value); }}
+              onInput={(e) => { if (!isComposingJD) setJobDescription((e.target as HTMLTextAreaElement).value); }}
             />
             <p className="text-sm text-gray-500">
               Adding a job description helps us provide more targeted suggestions

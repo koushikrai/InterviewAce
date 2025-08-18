@@ -1,0 +1,84 @@
+version: "3.9"
+services:
+  mongo:
+    image: mongo:6
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongo:27017/interviewace
+      - RESUME_PARSER_URL=http://resume-parser:8001
+      - INTERVIEW_GENERATOR_URL=http://interview-generator:8002
+      - ANSWER_FEEDBACK_URL=http://answer-feedback:8003
+      - ALLOWED_ORIGINS=http://localhost:8080
+      - ENFORCE_AUTH=false
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp.json
+      - STT_LANGUAGE=en-US
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
+      - resume-parser
+      - interview-generator
+      - answer-feedback
+    volumes:
+      - ./gcp.json:/secrets/gcp.json:ro
+
+  resume-parser:
+    build:
+      context: ./src/ai-services
+      dockerfile: Dockerfile.ai
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+    command: ["uvicorn", "resume_parser:app", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"
+
+  interview-generator:
+    build:
+      context: ./src/ai-services
+      dockerfile: Dockerfile.ai
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+    command: ["uvicorn", "interview_generator:app", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "8002:8002"
+
+  answer-feedback:
+    build:
+      context: ./src/ai-services
+      dockerfile: Dockerfile.ai
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash}
+    command: ["uvicorn", "answer_feedback:app", "--host", "0.0.0.0", "--port", "8003"]
+    ports:
+      - "8003:8003"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      - VITE_API_URL=http://localhost:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:

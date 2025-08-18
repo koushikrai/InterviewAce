@@ -1,23 +1,6 @@
-# AI Services Dependencies
-google_generativeai==0.8.5
-google-cloud-speech==2.21.0
-google-cloud-texttospeech==2.16.0
-
-# Web Framework
-fastapi==0.104.1
-uvicorn==0.24.0
-
-# CORS and HTTP
-python-multipart==0.0.6
-
-# Environment and Utilities
-python-dotenv==1.0.0
-requests==2.31.0
-
-# Optional: For enhanced resume parsing
-#spacy==3.7.2 pip install spacy --no-build-isolation
-python-docx==1.1.0
-PyPDF2==3.0.1 
-
-PyPDF2 #python-docx
-#python -c "import os; from dotenv import load_dotenv; load_dotenv(); print('GEMINI_API_KEY found:', 'Yes' if os.getenv('GEMINI_API_KEY') else 'No')"  to test if the .env is read
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+google-generativeai==0.7.2
+python-dotenv==1.0.1
+PyPDF2==3.0.1
+python-docx==1.1.2

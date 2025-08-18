@@ -11,6 +11,7 @@ export const getUserProgress = async (req: Request, res: Response) => {
 
     // Get user's interview sessions
     const sessions = await InterviewSession.find({ userId }).sort({ createdAt: -1 });
+    const resumeCount = await Resume.countDocuments({ userId });
     
     if (sessions.length === 0) {
       return res.json({
@@ -18,8 +19,10 @@ export const getUserProgress = async (req: Request, res: Response) => {
           totalInterviews: 0,
           averageScore: 0,
           improvementRate: 0,
-          confidenceTrend: 'stable'
+          confidenceTrend: 'stable',
+          resumesAnalyzed: resumeCount,
         },
+        resumesAnalyzed: resumeCount,
         skillBreakdown: {
           technical: { score: 0, trend: 'stable', focusAreas: [] },
           communication: { score: 0, trend: 'stable', focusAreas: [] },
@@ -58,10 +61,10 @@ export const getUserProgress = async (req: Request, res: Response) => {
     const improvementRate = Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100);
 
     // Determine confidence trend
-    const confidenceTrend = determineOverallConfidenceTrend(sessions);
+    const confidenceTrend = determineOverallConfidenceTrend(sessions as any[]);
 
     // Calculate skill breakdown
-    const skillBreakdown = calculateSkillBreakdown(sessions);
+    const skillBreakdown = calculateSkillBreakdown(sessions as any[]);
 
     // Get recent sessions with key metrics
     const recentSessions = sessions.slice(0, 5).map(session => ({
@@ -75,10 +78,10 @@ export const getUserProgress = async (req: Request, res: Response) => {
     }));
 
     // Generate AI-powered recommendations
-    const recommendations = await generateAIRecommendations(sessions, skillBreakdown);
+    const recommendations = await generateAIRecommendations(sessions as any[], skillBreakdown as any);
 
     // Generate learning path
-    const learningPath = generateLearningPath(averageScore, skillBreakdown);
+    const learningPath = generateLearningPath(averageScore, skillBreakdown as any);
 
     res.json({
       overallProgress: {
@@ -88,8 +91,10 @@ export const getUserProgress = async (req: Request, res: Response) => {
         completionRate,
         averageScore,
         improvementRate,
-        confidenceTrend
+        confidenceTrend,
+        resumesAnalyzed: resumeCount,
       },
+      resumesAnalyzed: resumeCount,
       skillBreakdown,
       recentSessions,
       recommendations,
@@ -131,17 +136,17 @@ export const getSessionAnalytics = async (req: Request, res: Response) => {
       learningPath: session.learningPath,
       detailedFeedback: {
         questionBreakdown: feedbackLogs.map(log => ({
-          question: log.question,
-          score: log.score,
-          category: log.questionCategory,
-          difficulty: log.difficulty,
-          strengths: log.detailedFeedback?.overall?.strengths || [],
-          improvements: log.detailedFeedback?.overall?.improvements || [],
-          confidenceLevel: log.confidenceLevel
+          question: (log as any).question,
+          score: (log as any).score,
+          category: (log as any).questionCategory,
+          difficulty: (log as any).difficulty,
+          strengths: (log as any).detailedFeedback?.overall?.strengths || [],
+          improvements: (log as any).detailedFeedback?.overall?.improvements || [],
+          confidenceLevel: (log as any).confidenceLevel
         })),
-        categoryPerformance: calculateCategoryPerformance(feedbackLogs),
-        difficultyAnalysis: calculateDifficultyAnalysis(feedbackLogs),
-        improvementTrend: calculateImprovementTrend(feedbackLogs)
+        categoryPerformance: calculateCategoryPerformance(feedbackLogs as any[]),
+        difficultyAnalysis: calculateDifficultyAnalysis(feedbackLogs as any[]),
+        improvementTrend: calculateImprovementTrend(feedbackLogs as any[])
       }
     };
 
@@ -175,19 +180,19 @@ export const getComparativeAnalysis = async (req: Request, res: Response) => {
     // Calculate comparison metrics
     const comparison = {
       currentPeriod: {
-        sessions: currentSessions.length,
-        averageScore: calculateAverageScore(currentSessions),
-        completionRate: calculateCompletionRate(currentSessions),
-        skillBreakdown: calculateSkillBreakdown(currentSessions)
+        sessions: (currentSessions as any[]).length,
+        averageScore: calculateAverageScore(currentSessions as any[]),
+        completionRate: calculateCompletionRate(currentSessions as any[]),
+        skillBreakdown: calculateSkillBreakdown(currentSessions as any[])
       },
       previousPeriod: {
-        sessions: previousSessions.length,
-        averageScore: calculateAverageScore(previousSessions),
-        completionRate: calculateCompletionRate(previousSessions),
-        skillBreakdown: calculateSkillBreakdown(previousSessions)
+        sessions: (previousSessions as any[]).length,
+        averageScore: calculateAverageScore(previousSessions as any[]),
+        completionRate: calculateCompletionRate(previousSessions as any[]),
+        skillBreakdown: calculateSkillBreakdown(previousSessions as any[])
       },
-      improvements: calculateImprovements(currentSessions, previousSessions),
-      trends: identifyTrends(currentSessions, previousSessions)
+      improvements: calculateImprovements(currentSessions as any[], previousSessions as any[]),
+      trends: identifyTrends(currentSessions as any[], previousSessions as any[])
     };
 
     res.json(comparison);
@@ -271,14 +276,14 @@ function calculateCategoryPerformance(feedbackLogs: any[]) {
   const performance: any = {};
   
   categories.forEach(category => {
-    const categoryLogs = feedbackLogs.filter(log => log.questionCategory === category);
+    const categoryLogs = feedbackLogs.filter(log => (log as any).questionCategory === category);
     if (categoryLogs.length > 0) {
-      const scores = categoryLogs.map(log => log.score);
+      const scores = categoryLogs.map(log => (log as any).score);
       performance[category] = {
         count: categoryLogs.length,
         averageScore: Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length),
-        strengths: getCategoryStrengths(categoryLogs),
-        improvements: getCategoryImprovements(categoryLogs)
+        strengths: getCategoryStrengths(categoryLogs as any[]),
+        improvements: getCategoryImprovements(categoryLogs as any[])
       };
     } else {
       performance[category] = { count: 0, averageScore: 0, strengths: [], improvements: [] };
@@ -293,9 +298,9 @@ function calculateDifficultyAnalysis(feedbackLogs: any[]) {
   const analysis: any = {};
   
   difficulties.forEach(difficulty => {
-    const difficultyLogs = feedbackLogs.filter(log => log.difficulty === difficulty);
+    const difficultyLogs = feedbackLogs.filter(log => (log as any).difficulty === difficulty);
     if (difficultyLogs.length > 0) {
-      const scores = difficultyLogs.map(log => log.score);
+      const scores = difficultyLogs.map(log => (log as any).score);
       analysis[difficulty] = {
         count: difficultyLogs.length,
         averageScore: Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length),
@@ -314,13 +319,13 @@ function calculateDifficultyAnalysis(feedbackLogs: any[]) {
 function calculateImprovementTrend(feedbackLogs: any[]) {
   if (feedbackLogs.length < 2) return 'insufficient_data';
   
-  const sortedLogs = feedbackLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const sortedLogs = feedbackLogs.sort((a, b) => new Date((a as any).timestamp).getTime() - new Date((b as any).timestamp).getTime());
   const midPoint = Math.ceil(sortedLogs.length / 2);
   const firstHalf = sortedLogs.slice(0, midPoint);
   const secondHalf = sortedLogs.slice(midPoint);
   
-  const firstAvg = firstHalf.reduce((sum, log) => sum + log.score, 0) / firstHalf.length;
-  const secondAvg = secondHalf.reduce((sum, log) => sum + log.score, 0) / secondHalf.length;
+  const firstAvg = firstHalf.reduce((sum, log) => sum + (log as any).score, 0) / firstHalf.length;
+  const secondAvg = secondHalf.reduce((sum, log) => sum + (log as any).score, 0) / secondHalf.length;
   
   const improvement = ((secondAvg - firstAvg) / firstAvg) * 100;
   
@@ -334,8 +339,8 @@ function calculateImprovementTrend(feedbackLogs: any[]) {
 function getCategoryStrengths(logs: any[]) {
   const strengths: string[] = [];
   logs.forEach(log => {
-    if (log.detailedFeedback?.overall?.strengths) {
-      strengths.push(...log.detailedFeedback.overall.strengths);
+    if ((log as any).detailedFeedback?.overall?.strengths) {
+      strengths.push(...(log as any).detailedFeedback.overall.strengths);
     }
   });
   return [...new Set(strengths)].slice(0, 3);
@@ -344,8 +349,8 @@ function getCategoryStrengths(logs: any[]) {
 function getCategoryImprovements(logs: any[]) {
   const improvements: string[] = [];
   logs.forEach(log => {
-    if (log.detailedFeedback?.overall?.improvements) {
-      improvements.push(...log.detailedFeedback.overall.improvements);
+    if ((log as any).detailedFeedback?.overall?.improvements) {
+      improvements.push(...(log as any).detailedFeedback.overall.improvements);
     }
   });
   return [...new Set(improvements)].slice(0, 3);

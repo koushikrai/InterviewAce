@@ -32,8 +32,9 @@ const Dashboard = () => {
         const totalSessions = p?.overallProgress?.totalInterviews ?? 0;
         const averageScore = p?.overallProgress?.averageScore ?? 0;
         const improvement = p?.overallProgress?.improvementRate ?? 0;
-        setStats({ resumesAnalyzed: 0, interviewsSessions: totalSessions, overallScore: averageScore, improvementRate: improvement });
-        const sessions = (p?.recentSessions ?? []).map((s: any) => ({
+        const resumesAnalyzed = p?.resumesAnalyzed ?? p?.overallProgress?.resumesAnalyzed ?? 0;
+        setStats({ resumesAnalyzed, interviewsSessions: totalSessions, overallScore: averageScore, improvementRate: improvement });
+        const sessions = (p?.recentSessions ?? []).map((s: { id?: string; _id?: string; jobTitle?: string; date?: string; overallScore?: number }) => ({
           id: String(s.id ?? s._id ?? ''),
           role: s.jobTitle ?? 'Interview',
           score: s.overallScore ?? 0,

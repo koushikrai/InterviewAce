@@ -5,7 +5,7 @@ import { generateInterviewQuestions, getAnswerFeedback } from '../services/aiSer
 
 export const startInterview = async (req: Request, res: Response) => {
   try {
-    const { jobTitle, mode, difficulty = 'medium', numQuestions = 5, resumeData } = req.body;
+    const { jobTitle, mode, difficulty = 'medium', numQuestions = 5, resumeData, userId: bodyUserId } = req.body as any;
 
     if (!jobTitle || !mode) {
       return res.status(400).json({ message: 'Job title and mode are required' });
@@ -14,21 +14,22 @@ export const startInterview = async (req: Request, res: Response) => {
     // Generate interview questions using AI service
     const questionsResponse = await generateInterviewQuestions(jobTitle, resumeData, difficulty, numQuestions);
     
-    if (!questionsResponse.success) {
+    if (!(questionsResponse as any).success) {
       return res.status(500).json({ message: 'Failed to generate interview questions' });
     }
 
     // Create interview session with enhanced tracking
     const session = new InterviewSession({
+      userId: (req as any).userId || bodyUserId,
       jobTitle,
       mode,
       sessionAnalytics: {
-        totalQuestions: questionsResponse.questions.length,
+        totalQuestions: (questionsResponse as any).questions.length,
         answeredQuestions: 0,
         averageResponseTime: 0,
-        difficultyDistribution: questionsResponse.metadata?.difficultyDistribution || {
+        difficultyDistribution: (questionsResponse as any).metadata?.difficultyDistribution || {
           easy: 0,
-          medium: questionsResponse.questions.length,
+          medium: (questionsResponse as any).questions.length,
           hard: 0
         },
         categoryPerformance: {
@@ -68,8 +69,8 @@ export const startInterview = async (req: Request, res: Response) => {
 
     res.json({
       sessionId: session._id,
-      questions: questionsResponse.questions,
-      metadata: questionsResponse.metadata,
+      questions: (questionsResponse as any).questions,
+      metadata: (questionsResponse as any).metadata,
       message: 'Interview session started successfully'
     });
   } catch (error) {
@@ -89,26 +90,18 @@ export const submitAnswer = async (req: Request, res: Response) => {
     // Get AI feedback for the answer
     const feedbackResponse = await getAnswerFeedback(question, answer, 'Software Engineer', questionCategory);
     
-    if (!feedbackResponse.success) {
+    if (!(feedbackResponse as any).success) {
       return res.status(500).json({ message: 'Failed to get answer feedback' });
     }
 
     // Create detailed feedback log
     const feedbackLog = new FeedbackLog({
-      sessionId,
-      question,
-      userAnswer: answer,
-      aiFeedback: feedbackResponse.feedback,
-      score: feedbackResponse.score,
-      detailedFeedback: feedbackResponse.detailedFeedback,
-      improvementAreas: feedbackResponse.improvementAreas || [],
-      nextSteps: feedbackResponse.nextSteps || [],
-      confidenceLevel: feedbackResponse.confidenceLevel || 'medium',
-      questionCategory,
-      difficulty,
-      expectedKeywords: feedbackResponse.expectedKeywords || [],
-      userKeywords: feedbackResponse.userKeywords || [],
-      keywordMatch: feedbackResponse.keywordMatch || 0
+      sessionId, question, userAnswer: answer, aiFeedback: (feedbackResponse as any).feedback,
+      score: (feedbackResponse as any).score, detailedFeedback: (feedbackResponse as any).detailedFeedback,
+      improvementAreas: (feedbackResponse as any).improvementAreas || [], nextSteps: (feedbackResponse as any).nextSteps || [],
+      confidenceLevel: (feedbackResponse as any).confidenceLevel || 'medium', questionCategory, difficulty,
+      expectedKeywords: (feedbackResponse as any).expectedKeywords || [], userKeywords: (feedbackResponse as any).userKeywords || [],
+      keywordMatch: (feedbackResponse as any).keywordMatch || 0
     });
 
     await feedbackLog.save();
@@ -119,13 +112,18 @@ export const submitAnswer = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Interview session not found' });
     }
 
+    // Ensure userId is set if possible (sticky)
+    if (!session.userId && (req as any).userId) {
+      session.userId = (req as any).userId;
+    }
+
     // Add feedback log to session
     session.feedbackLogIds.push(feedbackLog._id);
     session.sessionAnalytics.answeredQuestions += 1;
 
     // Update performance metrics
     const currentMetrics = session.performanceMetrics;
-    const newScore = feedbackResponse.score;
+    const newScore = (feedbackResponse as any).score as number;
     
     // Calculate running averages
     const totalScores = session.feedbackLogIds.length;
@@ -134,10 +132,10 @@ export const submitAnswer = async (req: Request, res: Response) => {
     );
 
     // Update category-specific scores
-    if (feedbackResponse.detailedFeedback) {
-      const commScore = feedbackResponse.detailedFeedback.communication.overall;
-      const techScore = feedbackResponse.detailedFeedback.technical.overall;
-      const behavScore = feedbackResponse.detailedFeedback.behavioral.overall;
+    if ((feedbackResponse as any).detailedFeedback) {
+      const commScore = (feedbackResponse as any).detailedFeedback.communication.overall;
+      const techScore = (feedbackResponse as any).detailedFeedback.technical.overall;
+      const behavScore = (feedbackResponse as any).detailedFeedback.behavioral.overall;
 
       session.performanceMetrics.communicationScore = Math.round(
         ((currentMetrics.communicationScore * (totalScores - 1)) + commScore) / totalScores
@@ -219,13 +217,13 @@ async function generateProgressInsights(session: any) {
     const weaknesses: string[] = [];
     const improvementAreas: string[] = [];
 
-    feedbackLogs.forEach(log => {
-      if (log.detailedFeedback?.overall?.strengths) {
-        strengths.push(...log.detailedFeedback.overall.strengths);
+    feedbackLogs.forEach((log) => {
+      if ((log as any).detailedFeedback?.overall?.strengths) {
+        strengths.push(...(log as any).detailedFeedback.overall.strengths);
       }
-      if (log.detailedFeedback?.overall?.improvements) {
-        weaknesses.push(...log.detailedFeedback.overall.improvements);
-        improvementAreas.push(...log.detailedFeedback.overall.improvements);
+      if ((log as any).detailedFeedback?.overall?.improvements) {
+        weaknesses.push(...(log as any).detailedFeedback.overall.improvements);
+        improvementAreas.push(...(log as any).detailedFeedback.overall.improvements);
       }
     });
 
@@ -233,10 +231,10 @@ async function generateProgressInsights(session: any) {
     const skillGaps = [...new Set(weaknesses)];
     
     // Generate recommendations
-    const recommendations = generateRecommendations(session, feedbackLogs);
+    const recommendations = generateRecommendations(session, feedbackLogs as any[]);
     
     // Determine confidence trend
-    const confidenceTrend = determineConfidenceTrend(feedbackLogs);
+    const confidenceTrend = determineConfidenceTrend(feedbackLogs as any[]);
     
     // Update progress insights
     session.progressInsights = {
@@ -250,7 +248,7 @@ async function generateProgressInsights(session: any) {
     };
 
     // Update learning path
-    session.learningPath = generateLearningPath(session, skillGaps);
+    session.learningPath = generateLearningPath(session, skillGaps as string[]);
     
   } catch (error) {
     console.error('Error generating progress insights:', error);
@@ -268,10 +266,12 @@ async function calculateFinalInsights(session: any) {
     
     // Calculate improvement rate (compare first half vs second half)
     const midPoint = Math.ceil(feedbackLogs.length / 2);
-    const firstHalfAvg = feedbackLogs.slice(0, midPoint).reduce((sum, log) => sum + log.score, 0) / midPoint;
-    const secondHalfAvg = feedbackLogs.slice(midPoint).reduce((sum, log) => sum + log.score, 0) / (feedbackLogs.length - midPoint);
+    const firstHalfAvg = feedbackLogs.slice(0, midPoint).reduce((sum, log) => sum + (log as any).score, 0) / Math.max(midPoint, 1);
+    const secondHalfAvg = feedbackLogs.slice(midPoint).reduce((sum, log) => sum + (log as any).score, 0) / Math.max((feedbackLogs.length - midPoint), 1);
     
-    const improvementRate = Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100);
+    const improvementRate = isFinite(firstHalfAvg) && firstHalfAvg > 0
+      ? Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100)
+      : 0;
     
     return {
       completionRate,
@@ -280,7 +280,7 @@ async function calculateFinalInsights(session: any) {
       categoryBreakdown: session.sessionAnalytics.categoryPerformance,
       difficultyAnalysis: session.sessionAnalytics.difficultyDistribution,
       timeAnalysis: {
-        totalTime: 'N/A', // Could be enhanced with actual timing
+        totalTime: 'N/A',
         averagePerQuestion: 'N/A'
       }
     };
@@ -295,8 +295,8 @@ function generateRecommendations(session: any, feedbackLogs: any[]) {
   const recommendations: string[] = [];
   
   // Analyze performance patterns
-  const lowScores = feedbackLogs.filter(log => log.score < 70);
-  const highScores = feedbackLogs.filter(log => log.score > 85);
+  const lowScores = feedbackLogs.filter((log) => (log as any).score < 70);
+  const highScores = feedbackLogs.filter((log) => (log as any).score > 85);
   
   if (lowScores.length > highScores.length) {
     recommendations.push("Focus on improving weak areas through targeted practice");
@@ -316,8 +316,8 @@ function determineConfidenceTrend(feedbackLogs: any[]) {
   if (feedbackLogs.length < 2) return 'stable';
   
   const midPoint = Math.ceil(feedbackLogs.length / 2);
-  const firstHalfConfidence = feedbackLogs.slice(0, midPoint).reduce((sum, log) => sum + (log.detailedFeedback?.behavioral?.confidence || 70), 0) / midPoint;
-  const secondHalfConfidence = feedbackLogs.slice(midPoint).reduce((sum, log) => sum + (log.detailedFeedback?.behavioral?.confidence || 70), 0) / (feedbackLogs.length - midPoint);
+  const firstHalfConfidence = feedbackLogs.slice(0, midPoint).reduce((sum, log) => sum + ((log as any).detailedFeedback?.behavioral?.confidence || 70), 0) / midPoint;
+  const secondHalfConfidence = feedbackLogs.slice(midPoint).reduce((sum, log) => sum + ((log as any).detailedFeedback?.behavioral?.confidence || 70), 0) / (feedbackLogs.length - midPoint);
   
   const difference = secondHalfConfidence - firstHalfConfidence;
   
