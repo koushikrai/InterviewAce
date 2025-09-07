@@ -35,7 +35,7 @@ export const uploadResume = async (req: Request, res: Response) => {
 
 export const analyzeResume = async (req: Request, res: Response) => {
   try {
-    const { resumeId, jobDescription } = req.body as { resumeId: string; jobDescription?: string };
+    const { resumeId, jobDescription, jobTitle } = req.body as { resumeId: string; jobDescription?: string; jobTitle?: string };
     if (!resumeId) {
       return res.status(400).json({ message: 'resumeId is required' });
     }
@@ -45,8 +45,8 @@ export const analyzeResume = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Resume not found' });
     }
 
-    // Parse resume using AI service
-    const parsed = await parseResume(resume.originalFile);
+    // Parse resume using AI service (optionally pass job title for role-guided analysis)
+    const parsed = await parseResume(resume.originalFile, { jobTitle });
     const strengths: string[] = [];
     const improvements: string[] = [];
     const suggestions: string[] = [];
@@ -281,4 +281,4 @@ export const deleteResume = async (req: Request, res: Response) => {
     console.error('deleteResume error:', error);
     return res.status(500).json({ message: 'Failed to delete resume' });
   }
-};
+}; 

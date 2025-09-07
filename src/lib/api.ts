@@ -55,8 +55,8 @@ export const resumeAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   get: (id: string) => api.get(`/resume/${id}`),
-  analyze: (resumeId: string, jobDescription: string) =>
-    api.post('/resume/analyze', { resumeId, jobDescription }),
+  analyze: (resumeId: string, jobDescription?: string, jobTitle?: string) =>
+    api.post('/resume/analyze', { resumeId, jobDescription, jobTitle }),
 };
 
 export const interviewAPI = {

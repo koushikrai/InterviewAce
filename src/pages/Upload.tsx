@@ -41,6 +41,7 @@ const Upload = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [jobDescription, setJobDescription] = useState("");
   const [isComposingJD, setIsComposingJD] = useState(false);
+  const [jobTitle, setJobTitle] = useState("");
 
   const { toast } = useToast();
 
@@ -115,7 +116,7 @@ const Upload = () => {
       const uploadedId = uploadResponse.data.id ?? uploadResponse.data.resumeId ?? "";
 
       const analyzeResponse = await withApiFallback<AxiosResponse<AnalysisResults> | null>(
-        () => resumeAPI.analyze(uploadedId, jobDescription) as Promise<AxiosResponse<AnalysisResults>>,
+        () => resumeAPI.analyze(uploadedId, jobDescription, jobTitle || undefined) as Promise<AxiosResponse<AnalysisResults>>,
         null,
         {
           isUnreachable: (error: unknown) => {
@@ -189,6 +190,16 @@ const Upload = () => {
               </Label>
               <p className="text-sm text-gray-500 mt-2">PDF, DOCX up to 10MB</p>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="jobTitle">Target Job Title (Optional)</Label>
+            <Input
+              id="jobTitle"
+              placeholder="e.g., Senior Software Engineer"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+            />
           </div>
 
           <div className="space-y-2">

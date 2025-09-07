@@ -9,6 +9,7 @@
     "start-apis": "concurrently \"uvicorn resume_parser:app --host 0.0.0.0 --port 8001\" \"uvicorn interview_generator:app --host 0.0.0.0 --port 8002\" \"uvicorn answer_feedback:app --host 0.0.0.0 --port 8003\"",
     "monitor:ai": "node src/server/monitor-ai-services.js",
     "build": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
     "preview": "vite preview",
     "server": "ts-node-esm src/server/app.ts",
     "test": "node --test",

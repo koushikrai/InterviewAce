@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import InterviewSession from '../../models/interviewModel.js';
 import FeedbackLog from '../../models/feedbackLogModel.js';
 import { generateInterviewQuestions, getAnswerFeedback } from '../services/aiService.js';
+import { Types } from 'mongoose';
 
 export const startInterview = async (req: Request, res: Response) => {
   try {
@@ -118,7 +119,9 @@ export const submitAnswer = async (req: Request, res: Response) => {
     }
 
     // Add feedback log to session
-    session.feedbackLogIds.push(feedbackLog._id);
+    await feedbackLog.save();
+    
+    session.feedbackLogIds.push(feedbackLog._id as Types.ObjectId);
     session.sessionAnalytics.answeredQuestions += 1;
 
     // Update performance metrics

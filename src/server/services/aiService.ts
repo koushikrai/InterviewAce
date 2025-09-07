@@ -47,12 +47,15 @@ async function retryWithBackoff<T>(
 }
 
 // Resume parsing service
-export async function parseResume(filePathOrData: string): Promise<unknown> {
+export async function parseResume(filePathOrData: string, options?: { jobTitle?: string }): Promise<unknown> {
   const url = `${AI_SERVICES.RESUME_PARSER}/parse`;
   try {
     const form = new FormData();
     const fileStream = fs.createReadStream(path.resolve(filePathOrData));
     form.append('file', fileStream, path.basename(filePathOrData));
+    if (options?.jobTitle) {
+      form.append('jobTitle', options.jobTitle);
+    }
 
     const result = await retryWithBackoff(async () => {
       const response = await axios.post(url, form, {

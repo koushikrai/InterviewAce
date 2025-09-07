@@ -1,68 +1,65 @@
 src/
-├── ai/                            # Genkit/LLM-based AI workflows
-│   ├── flows/
-│   │   ├── AiFeedbackEngine.ts            # Analyze spoken/text responses
-│   │   ├── ResumeAnalyser.ts              # Parse + match resume vs job
-│   │   └── InterviewQuestionGenerator.ts  # Custom interview Qs via LLM
-│   ├── dev.ts                    # Local test CLI for AI flows
-│   ├── genkit.ts                 # Genkit/OpenAI config and setup
-
+├── ai-services/                  # Python microservices (via Flask/FastAPI)
+│   ├── resume_parser.py          # NLP resume parsing
+│   ├── interview_generator.py    # Custom Qs via OpenAI/Gemini
+│   ├── answer_feedback.py        # AI answer scoring
+│   ├── knowledge_base.py         # For managing vector stores
+│   └── role_profiles/            # Directory for different role profiles
+│
 ├── components/                   # Reusable UI components
 │   ├── ui/                       # shadcn/ui system (buttons, cards, etc.)
 │   ├── DashboardNav.tsx          # Custom dashboard nav
-│   ├──   
-│   └── 
-
+│   └── ErrorBoundary.tsx         # Catches JS errors in child components
+│
 ├── pages/                        # Route-based pages
-│   ├── Auth.tsx                 # Landing page
-│   ├── dashboard.tsx             # Main dashboard
-│   ├── index.tsx                 # Auth page
-│   ├── interview.tsx             # Interactive interview simulator
-│   └── NotFound.tsx                # Resume upload & analysis interface
-│   ├── Progress.tsx                 # Landing page
-│   ├── Upload.tsx                 # Landing page
-
-
-├── utils/                        #  Helper functions
+│   ├── Auth.tsx                  # Landing and authentication page
+│   ├── Dashboard.tsx             # Main dashboard
+│   ├── Index.tsx                 # Auth page
+│   ├── Interview.tsx             # Interactive interview simulator
+│   ├── NotFound.tsx              # 404 Page
+│   ├── Progress.tsx              # Page to show user progress
+│   ├── Upload.tsx                # Resume upload & analysis interface
+│   └── SessionReport.tsx         # Displays report after an interview session
+│
+├── utils/                        # Helper functions
 │   ├── resumeParser.ts           # Local resume cleaning/fallback
-│   └── scoreCalculator.ts        # Quantify feedback from AI
-
+│   ├── scoreCalculator.ts        # Quantify feedback from AI
+│   └── index.ts                  # Barrel file for utils
+│
 ├── hooks/                        # Custom React hooks
-│   ├── useAuth.ts                # Auth session hook
-│   └── useInterview.ts           # Manage live interview logic
-
+│   ├── use-mobile.tsx            # Hook to check for mobile device
+│   └── use-toast.ts              # Hook for showing toast notifications
+│
 ├── lib/                          # Config & API clients
 │   ├── api.ts                    # Axios/fetch wrapper with interceptors
-│   └── config.ts                 # Constants, endpoints, env config
-
+│   ├── apiFallback.ts            # Fallback for API calls
+│   └── utils.ts                  # Utility functions for lib
+│
 ├── models/                       # Mongoose DB schemas
 │   ├── userModel.ts              # User auth & profile
 │   ├── resumeModel.ts            # Resume metadata, parsed content
 │   ├── jobModel.ts               # Job role metadata
 │   ├── interviewModel.ts         # Mock interview logs
 │   └── feedbackLogModel.ts       # AI-generated feedback history
-
+│
 ├── server/                       # Node.js/Express backend
 │   ├── routes/                   # API endpoints
 │   │   ├── authRoutes.ts
 │   │   ├── resumeRoutes.ts
 │   │   ├── interviewRoutes.ts
-│   │   └── feedbackRoutes.ts
+│   │   ├── feedbackRoutes.ts
+│   │   └── progressRoutes.ts
 │   ├── controllers/              # Request handlers
 │   │   ├── authController.ts
 │   │   ├── resumeController.ts
-│   │   └── interviewController.ts
+│   │   ├── interviewController.ts
+│   │   └── progressController.ts
 │   ├── services/                 # Logic/service layer
 │   │   ├── aiService.ts          # Call local AI flows or Python services
 │   │   └── googleSpeech.ts       # TTS / STT handling
 │   ├── app.ts                    # Express app setup
 │   └── db.ts                     # MongoDB connection logic
-
-├── ai-services/                  # Python microservices (via Flask/FastAPI)                                                                                    
-│   ├── resume_parser.py          # NLP resume parsing
-│   ├── interview_generator.py    # Custom Qs via OpenAI/Gemini
-│   └── answer_feedback.py        # AI answer scoring
-
+│
 ├── public/
 │   └── assets/                   # Static files, logos, PDFs
 

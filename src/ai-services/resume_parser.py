@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
@@ -8,6 +8,10 @@ import json
 import PyPDF2
 from docx import Document
 import io
+try:
+    from knowledge_base import KnowledgeBase  # optional RAG
+except Exception:
+    KnowledgeBase = None  # type: ignore
 
 # Load .env if present
 try:
@@ -74,8 +78,22 @@ def extract_text_from_docx(content: bytes) -> str:
         print(f"Error extracting DOCX text: {str(e)}")
         raise Exception(f"Failed to extract DOCX text: {str(e)}")
 
+def _load_role_profile(job_title: str | None) -> dict:
+    if not job_title:
+        return {}
+    try:
+        key = job_title.lower().replace("/", "-").replace(" ", "_")
+        profile_path = os.path.join(os.path.dirname(__file__), "role_profiles", f"{key}.json")
+        if os.path.exists(profile_path):
+            with open(profile_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Failed to load role profile: {e}")
+    return {}
+
+
 @app.post("/parse")
-async def parse_resume(file: UploadFile = File(...)):
+async def parse_resume(file: UploadFile = File(...), jobTitle: str | None = Form(default=None)):
     try:
         print(f"Processing resume: {file.filename}")
         print(f"File size: {file.size} bytes")
@@ -94,17 +112,49 @@ async def parse_resume(file: UploadFile = File(...)):
         print(f"Extracted text length: {len(text_content)} characters")
         print(f"Text preview: {text_content[:200]}...")
         
+        # Optional role profile to guide analysis
+        role_profile = _load_role_profile(jobTitle)
         # Use Gemini AI for comprehensive resume analysis if configured
         model = genai.GenerativeModel(model_name) if api_key else None
         
         # Create comprehensive resume analysis prompt with truncated content
         snippet = text_content[:4000]
+        role_context = ""
+        if role_profile:
+            role_context = f"""
+            Target Role Profile:
+            Title: {role_profile.get('title', jobTitle)}
+            Seniority: {role_profile.get('seniority', 'unspecified')}
+            Must-Have Skills: {', '.join(role_profile.get('must_have_skills', [])[:30])}
+            Nice-to-Have Skills: {', '.join(role_profile.get('nice_to_have_skills', [])[:30])}
+            Impact Patterns: {', '.join(role_profile.get('impact_patterns', [])[:10])}
+            Anti-Patterns: {', '.join(role_profile.get('anti_patterns', [])[:10])}
+            """
+
+        # Retrieve senior exemplars from KB to ground suggestions
+        kb_context = ""
+        if KnowledgeBase is not None:
+            try:
+                kb = KnowledgeBase()
+                retrieved = kb.retrieve(query=snippet, top_k=2, role_hint=jobTitle)
+                if retrieved:
+                    parts = []
+                    for r in retrieved:
+                        text = (r.get("text") or "")[:1000]
+                        parts.append(text)
+                    kb_context = "\n\nRetrieved Exemplars (anonymized):\n" + "\n---\n".join(parts)
+            except Exception as e:
+                print(f"KB retrieval skipped: {e}")
+
         analysis_prompt = f"""
         You are an expert resume analyst and career coach. Analyze the following resume and provide comprehensive insights.
         
         Resume Content (truncated):
         {snippet}
         
+        {role_context}
+        {kb_context}
+
         Please provide a detailed analysis with the following structure:
         
         1. Skills Analysis:
@@ -171,7 +221,7 @@ async def parse_resume(file: UploadFile = File(...)):
             }}
         }}
         
-        Make sure to extract all relevant information and structure it properly.
+        Make sure to extract all relevant information and structure it properly. If a target role profile is provided, tailor the analysis to emphasize alignment with that role and explicitly call out gaps vs the must-have skills.
         """
         
         try:
@@ -251,6 +301,17 @@ async def parse_resume(file: UploadFile = File(...)):
                 "contact": {"email": "developer@example.com", "phone": "+1-555-0123", "location": "San Francisco, CA", "linkedin": "linkedin.com/in/developer"}
             }
             
+            # If role profile exists, add deterministic coverage checks
+            if role_profile:
+                must = set([s.lower() for s in role_profile.get("must_have_skills", [])])
+                has = set([s.lower() for s in parsed_data.get("skills", [])])
+                missing = [s for s in role_profile.get("must_have_skills", []) if s.lower() not in has]
+                parsed_data["roleAlignment"] = {
+                    "targetRole": role_profile.get("title", jobTitle),
+                    "mustHaveCoverage": round(100 * (len(must.intersection(has)) / max(len(must) or 1, 1))),
+                    "missingMustHaves": missing[:10]
+                }
+
             print(f"Fallback resume parsing. Using enhanced dummy data")
             return JSONResponse({
                 "success": True,

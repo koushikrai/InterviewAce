@@ -74,7 +74,7 @@ export const getUserProgress = async (req: Request, res: Response) => {
       overallScore: session.performanceMetrics.overallScore,
       completionRate: Math.round((session.sessionAnalytics.answeredQuestions / session.sessionAnalytics.totalQuestions) * 100),
       strengths: session.progressInsights.strengths.slice(0, 3),
-      improvements: session.progressInsights.improvements.slice(0, 3)
+      improvements: session.progressInsights.improvementAreas.slice(0, 3)
     }));
 
     // Generate AI-powered recommendations

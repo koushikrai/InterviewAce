@@ -1,8 +1,36 @@
+# FROM node:20-alpine
+# WORKDIR /app
+# COPY package*.json ./
+# RUN npm ci --omit=dev
+# COPY . ./
+# ENV NODE_ENV=production
+# EXPOSE 3000
+# CMD ["node", "src/server/app.ts"]
+
+# 1. Use an official Node.js runtime as a parent image
 FROM node:20-alpine
+
+# 2. Set the working directory in the container
 WORKDIR /app
+
+# 3. Copy package.json and package-lock.json
 COPY package*.json ./
-RUN npm ci --omit=dev
-COPY . ./
+
+# 4. Install ALL dependencies (including devDependencies needed for the build)
+RUN npm ci
+
+# 5. Copy the rest of your application's source code
+COPY . .
+
+# 6. Build the TypeScript code into JavaScript using the server-specific config
+RUN npm run build:server
+
+# 7. Set production environment
 ENV NODE_ENV=production
+
+# 8. Expose the port the app runs on
 EXPOSE 3000
+
+# 9. Define the command to start the app by running the COMPILED JavaScript file
 CMD ["node", "dist/server/app.js"]
+
