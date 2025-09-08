@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IResume extends Document {
+  _id: mongoose.Types.ObjectId;
   userId?: mongoose.Types.ObjectId;
   originalFile: string;
   parsedData: any;
