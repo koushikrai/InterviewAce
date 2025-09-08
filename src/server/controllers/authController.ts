@@ -1,11 +1,13 @@
-export const register = (req, res) => {
+import { Request, Response } from 'express';
+
+export const register = (req: Request, res: Response) => {
   res.json({ message: 'Register controller' });
 };
 
-export const login = (req, res) => {
+export const login = (req: Request, res: Response) => {
   res.json({ message: 'Login controller' });
 };
 
-export const getMe = (req, res) => {
+export const getMe = (req: Request, res: Response) => {
   res.json({ message: 'GetMe controller' });
-}; 
+};

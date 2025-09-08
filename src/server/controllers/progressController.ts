@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from 'express';
 import InterviewSession from '../../models/interviewModel.js';
 import FeedbackLog from '../../models/feedbackLogModel.js';
