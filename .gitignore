@@ -47,6 +47,7 @@ temp/
 !tsconfig.json
 !tsconfig.app.json
 !tsconfig.node.json
+!tsconfig.server.json
 !components.json
 !postcss.config.js
 !tailwind.config.ts
