@@ -5,7 +5,7 @@ A full-stack platform to analyze resumes, generate interview questions, practice
 ## Stack
 - Frontend: React + TypeScript + shadcn/ui + React Query + Vite
 - Backend: Express + Mongoose (MongoDB) + Axios + Helmet/CORS
-- AI services: FastAPI (Python) + google-generativeai (Gemini)
+- AI services: Trained with Lora + FastAPI (Python) + google-generativeai (Gemini)
 - Voice: MediaRecorder (browser) + Google Cloud Speech-to-Text
 
 ## Features
