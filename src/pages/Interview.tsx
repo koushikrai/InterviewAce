@@ -438,8 +438,13 @@ const Interview = () => {
             {interviewMode === 'text' ? (
               <div className="space-y-2">
                 <label className="text-sm font-medium">Your Answer</label>
-                <Textarea value={userAnswer} onChange={(e) => { if (!isComposingAnswer) setUserAnswer(e.target.value); }} onCompositionStart={() => setIsComposingAnswer(true)} onCompositionEnd={(e) => { setIsComposingAnswer(false); setUserAnswer((e.target as HTMLTextAreaElement).value); }} onInput={(e) => { if (!isComposingAnswer) setUserAnswer((e.target as HTMLTextAreaElement).value); }} placeholder="Type your response here..." rows={6} className="resize-none" />
-              </div>
+                <Textarea
+                  value={userAnswer}
+                  onChange={(e) => setUserAnswer(e.target.value)}
+                  placeholder="Type your response here..."
+                  rows={6}
+                 className="resize-none" 
+/>              </div>
             ) : (
               <div className="text-center space-y-4">
                 <div className="space-y-2">

@@ -42,7 +42,7 @@ STT_LANGUAGE=en-US
 GEMINI_API_KEY=your_gemini_key
 # or
 GOOGLE_API_KEY=your_gemini_key
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-2.5-flash
 ```
 - Frontend (.env):
 ```
@@ -80,7 +80,7 @@ Requirements: Docker + Docker Compose
 set GEMINI_API_KEY=your_key
 # or
 set GOOGLE_API_KEY=your_key
-set GEMINI_MODEL=gemini-1.5-flash
+set GEMINI_MODEL=gemini-2.5-flash
 ```
 2) Place your GCP credentials file at project root as `gcp.json`.
 3) Run:
@@ -99,7 +99,7 @@ Ensure Mongo is running and ENFORCE_AUTH=false during tests.
 
 ## Notes & Tips
 - Voice STT requires valid GCP credentials (GOOGLE_APPLICATION_CREDENTIALS). Browser records audio/webm with opus.
-- Gemini rate limits: default to `gemini-1.5-flash` in dev; backoff with jitter and fallbacks are implemented.
+- Gemini rate limits: default to `gemini-2.5-flash` in dev; backoff with jitter and fallbacks are implemented.
 - CORS is configurable via `ALLOWED_ORIGINS`.
 
 ## Health

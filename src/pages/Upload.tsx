@@ -205,16 +205,23 @@ const Upload = () => {
           <div className="space-y-2">
             <Label htmlFor="jobDescription">Job Description (Optional)</Label>
             <Textarea
+              // id="jobDescription"
+              // placeholder="Paste the job description here to get targeted feedback..."
+              // rows={6}
+              // className="resize-none"
+              // value={jobDescription}
+              // onChange={(e) => { if (!isComposingJD) setJobDescription(e.target.value); }}
+              // onCompositionStart={() => setIsComposingJD(true)}
+              // onCompositionEnd={(e) => { setIsComposingJD(false); setJobDescription((e.target as HTMLTextAreaElement).value); }}
+              // onInput={(e) => { if (!isComposingJD) setJobDescription((e.target as HTMLTextAreaElement).value); }}
+              
               id="jobDescription"
               placeholder="Paste the job description here to get targeted feedback..."
               rows={6}
               className="resize-none"
               value={jobDescription}
-              onChange={(e) => { if (!isComposingJD) setJobDescription(e.target.value); }}
-              onCompositionStart={() => setIsComposingJD(true)}
-              onCompositionEnd={(e) => { setIsComposingJD(false); setJobDescription((e.target as HTMLTextAreaElement).value); }}
-              onInput={(e) => { if (!isComposingJD) setJobDescription((e.target as HTMLTextAreaElement).value); }}
-            />
+              onChange={(e) => setJobDescription(e.target.value)}
+/>
             <p className="text-sm text-gray-500">
               Adding a job description helps us provide more targeted suggestions
             </p>
@@ -479,9 +486,6 @@ const Upload = () => {
       <div className="flex gap-4 justify-center">
         <Button onClick={() => setUploadStep('upload')} variant="outline">
           Upload New Resume
-        </Button>
-        <Button>
-          Download Improved Resume
         </Button>
       </div>
     </div>

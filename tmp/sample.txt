@@ -1,0 +1,1 @@
+﻿Senior SWE with Node.js, React, Kubernetes, Kafka, TypeScript, AWS. Led microservices migration and reduced MTTR by 45%.

@@ -14,6 +14,37 @@ import { Line, LineChart, CartesianGrid, XAxis, YAxis } from "recharts";
 interface SkillItem { skill: string; current: number; target: number; improvement: number }
 interface RecentSession { id: string; date: string; role: string; score: number; duration?: string; improvement?: string }
 
+// Calculate day streak from recent sessions
+function calculateDayStreak(sessions: Array<{ date?: string; _id?: string }>) {
+  if (!sessions || sessions.length === 0) return 0;
+  
+  const dates = sessions
+    .map(s => {
+      const dateStr = s.date || new Date().toISOString();
+      return new Date(dateStr).toISOString().slice(0, 10);
+    })
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  
+  let streak = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  for (let i = 0; i < dates.length; i++) {
+    const sessionDate = new Date(dates[i]);
+    sessionDate.setHours(0, 0, 0, 0);
+    const expectedDate = new Date(today);
+    expectedDate.setDate(expectedDate.getDate() - i);
+    
+    if (sessionDate.getTime() === expectedDate.getTime()) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  
+  return streak;
+}
+
 const Progress = () => {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -26,13 +57,24 @@ const Progress = () => {
       try {
         const me = await authAPI.me();
         const id = me?.data?.user?._id ?? me?.data?._id ?? null;
-        if (!id) { setLoading(false); return; }
+        if (!id) { 
+          console.warn('No user ID found');
+          setLoading(false); 
+          return; 
+        }
         setUserId(id);
+        
+        console.log('Fetching progress for user:', id);
         const progressResp = await progressAPI.getUserProgress(id, '30d');
         const p = progressResp.data;
+        
+        console.log('Progress response:', p);
+        
         const totalSessions = p?.overallProgress?.totalInterviews ?? 0;
         const averageScore = p?.overallProgress?.averageScore ?? 0;
         const improvement = p?.overallProgress?.improvementRate ?? 0;
+        const streak = calculateDayStreak(p?.recentSessions ?? []) ?? 0;
+        
         // Map skill breakdown
         const skills: SkillItem[] = [];
         if (p?.skillBreakdown) {
@@ -40,6 +82,7 @@ const Progress = () => {
           if (p.skillBreakdown.technical) skills.push({ skill: 'Technical Knowledge', current: p.skillBreakdown.technical.score ?? 0, target: 85, improvement: 0 });
           if (p.skillBreakdown.behavioral) skills.push({ skill: 'Behavioral', current: p.skillBreakdown.behavioral.score ?? 0, target: 85, improvement: 0 });
         }
+        
         // Recent sessions
         const sessions: RecentSession[] = (p?.recentSessions ?? []).map((s: { id?: string; _id?: string; jobTitle?: string; date?: string; overallScore?: number }) => ({
           id: String(s.id ?? s._id ?? ''),
@@ -49,10 +92,13 @@ const Progress = () => {
           duration: undefined,
           improvement: undefined,
         }));
-        setOverallStats({ totalSessions, averageScore, improvement, streak: 0 });
+        
+        console.log('Updating state with:', { totalSessions, averageScore, improvement, streak });
+        setOverallStats({ totalSessions, averageScore, improvement, streak });
         setSkillBreakdown(skills);
         setRecentSessions(sessions);
-      } catch {
+      } catch (error) {
+        console.error('Error fetching progress:', error);
         // Keep defaults on error
       } finally {
         setLoading(false);
