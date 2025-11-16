@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Force left-to-right direction for textareas */
+.ltr {
+  direction: ltr;
+  unicode-bidi: normal;
+}
+
 /* Definition of the design system. All colors, gradients, fonts, etc should be defined here. */
 
 @layer base {

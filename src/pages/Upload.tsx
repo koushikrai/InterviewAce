@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,8 @@ const Upload = () => {
   const [jobDescription, setJobDescription] = useState("");
   const [isComposingJD, setIsComposingJD] = useState(false);
   const [jobTitle, setJobTitle] = useState("");
+  const jobTitleRef = useRef<HTMLInputElement>(null);
+  const jobDescriptionRef = useRef<HTMLTextAreaElement>(null);
 
   const { toast } = useToast();
 
@@ -195,33 +197,33 @@ const Upload = () => {
           <div className="space-y-2">
             <Label htmlFor="jobTitle">Target Job Title (Optional)</Label>
             <Input
+              ref={jobTitleRef}
               id="jobTitle"
+              autoFocus
               placeholder="e.g., Senior Software Engineer"
               value={jobTitle}
-              onChange={(e) => setJobTitle(e.target.value)}
+              onChange={(e) => {
+                setJobTitle(e.target.value);
+              }}
+              disabled={false}
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="jobDescription">Job Description (Optional)</Label>
             <Textarea
-              // id="jobDescription"
-              // placeholder="Paste the job description here to get targeted feedback..."
-              // rows={6}
-              // className="resize-none"
-              // value={jobDescription}
-              // onChange={(e) => { if (!isComposingJD) setJobDescription(e.target.value); }}
-              // onCompositionStart={() => setIsComposingJD(true)}
-              // onCompositionEnd={(e) => { setIsComposingJD(false); setJobDescription((e.target as HTMLTextAreaElement).value); }}
-              // onInput={(e) => { if (!isComposingJD) setJobDescription((e.target as HTMLTextAreaElement).value); }}
-              
+              ref={jobDescriptionRef}
               id="jobDescription"
+              autoFocus={false}
               placeholder="Paste the job description here to get targeted feedback..."
               rows={6}
               className="resize-none"
               value={jobDescription}
-              onChange={(e) => setJobDescription(e.target.value)}
-/>
+              onChange={(e) => {
+                setJobDescription(e.target.value);
+              }}
+              disabled={false}
+            />
             <p className="text-sm text-gray-500">
               Adding a job description helps us provide more targeted suggestions
             </p>
