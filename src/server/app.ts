@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import { Types } from 'mongoose';
 import authRoutes from './routes/authRoutes.js';
 import interviewRoutes from './routes/interviewRoutes.js';
 import resumeRoutes from './routes/resumeRoutes.js';
@@ -59,10 +61,44 @@ function rateLimit(req: express.Request, res: express.Response, next: express.Ne
 // Optional auth guard for protected routes
 const enforceAuth = (process.env.ENFORCE_AUTH === 'true') || (process.env.NODE_ENV === 'production');
 function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!enforceAuth) return next();
   const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ message: 'Unauthorized' });
-  // TODO: verify token; for now, presence check only
+  
+  // Try to extract userId from JWT token if provided
+  if (auth) {
+    try {
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        console.error('JWT_SECRET not configured');
+        if (enforceAuth) return res.status(500).json({ message: 'Server configuration error' });
+      } else {
+        const decoded = jwt.verify(token, jwtSecret) as any;
+        const rawUserId = decoded.userId || decoded.id || decoded._id;
+        
+        if (rawUserId) {
+          // Convert to ObjectId if it's a string
+          (req as any).userId = new Types.ObjectId(rawUserId);
+          console.log(`Auth verified for user: ${(req as any).userId}`);
+          return next();
+        }
+      }
+    } catch (error) {
+      console.error('JWT verification error:', error);
+      if (enforceAuth) return res.status(401).json({ message: 'Invalid token' });
+      // In development, fall through to use default userId if token is invalid
+    }
+  }
+
+  // If no valid token and auth is enforced, reject
+  if (enforceAuth && !auth) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  // In development mode without auth enforcement, use a consistent development userId
+  if (!(req as any).userId) {
+    // Use a fixed development ObjectId so we can track sessions consistently
+    (req as any).userId = new Types.ObjectId('000000000000000000000001');
+  }
   return next();
 }
 

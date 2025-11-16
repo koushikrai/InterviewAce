@@ -10,9 +10,71 @@ export const getUserProgress = async (req: Request, res: Response) => {
     const { userId } = req.params;
     const { timeRange = '30d' } = req.query;
 
-    // Get user's interview sessions
-    const sessions = await InterviewSession.find({ userId }).sort({ createdAt: -1 });
+    // Calculate time range
+    const now = new Date();
+    const start = new Date();
+    
+    switch (timeRange) {
+      case '7d':
+        start.setDate(now.getDate() - 7);
+        break;
+      case '30d':
+        start.setDate(now.getDate() - 30);
+        break;
+      case '90d':
+        start.setDate(now.getDate() - 90);
+        break;
+      case '6m':
+        start.setMonth(now.getMonth() - 6);
+        break;
+      case '1y':
+        start.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        start.setDate(now.getDate() - 30);
+    }
+
+    // Get user's interview sessions within the time range
+    const sessions = await InterviewSession.find({ 
+      userId,
+      createdAt: { $gte: start, $lte: now }
+    }).sort({ createdAt: -1 });
+    
+    // Also get all sessions for calculating trends
+    const allSessions = await InterviewSession.find({ userId }).sort({ createdAt: -1 });
+    
     const resumeCount = await Resume.countDocuments({ userId });
+    
+    console.log(`getUserProgress - userId: ${userId}, timeRange: ${timeRange}`);
+    console.log(`Sessions found in range: ${sessions.length}, Total sessions: ${allSessions.length}`);
+    
+    if (sessions.length === 0 && allSessions.length > 0) {
+      // User has sessions but none in the time range, return data from all sessions with note
+      console.log('No sessions in time range, but user has completed sessions. Using all sessions for overview.');
+      return res.json({
+        overallProgress: {
+          totalInterviews: allSessions.length,
+          averageScore: calculateAverageScore(allSessions as any[]),
+          improvementRate: calculateImprovementRate(allSessions as any[]),
+          confidenceTrend: determineOverallConfidenceTrend(allSessions as any[]),
+          resumesAnalyzed: resumeCount,
+        },
+        resumesAnalyzed: resumeCount,
+        skillBreakdown: calculateSkillBreakdown(allSessions as any[]),
+        recentSessions: allSessions.slice(0, 5).map(session => ({
+          id: session._id,
+          jobTitle: session.jobTitle,
+          date: session.createdAt,
+          overallScore: session.performanceMetrics.overallScore,
+          completionRate: Math.round((session.sessionAnalytics.answeredQuestions / session.sessionAnalytics.totalQuestions) * 100),
+          strengths: session.progressInsights.strengths.slice(0, 3),
+          improvements: session.progressInsights.improvementAreas.slice(0, 3)
+        })),
+        recommendations: ["Review your recent sessions", "Continue practicing with different roles"],
+        learningPath: generateLearningPath(calculateAverageScore(allSessions as any[]), calculateSkillBreakdown(allSessions as any[])),
+        timeRange
+      });
+    }
     
     if (sessions.length === 0) {
       return res.json({
@@ -59,7 +121,9 @@ export const getUserProgress = async (req: Request, res: Response) => {
     const midPoint = Math.ceil(sortedSessions.length / 2);
     const firstHalfAvg = sortedSessions.slice(0, midPoint).reduce((sum, session) => sum + session.performanceMetrics.overallScore, 0) / midPoint;
     const secondHalfAvg = sortedSessions.slice(midPoint).reduce((sum, session) => sum + session.performanceMetrics.overallScore, 0) / (sortedSessions.length - midPoint);
-    const improvementRate = Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100);
+    const improvementRate = isFinite(firstHalfAvg) && firstHalfAvg > 0 
+      ? Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100)
+      : 0;
 
     // Determine confidence trend
     const confidenceTrend = determineOverallConfidenceTrend(sessions as any[]);
@@ -77,6 +141,10 @@ export const getUserProgress = async (req: Request, res: Response) => {
       strengths: session.progressInsights.strengths.slice(0, 3),
       improvements: session.progressInsights.improvementAreas.slice(0, 3)
     }));
+
+    console.log(`Returning progress: totalSessions=${totalSessions}, averageScore=${averageScore}, improvementRate=${improvementRate}`);
+    console.log(`Skill breakdown:`, skillBreakdown);
+    console.log(`Recent sessions:`, recentSessions);
 
     // Generate AI-powered recommendations
     const recommendations = await generateAIRecommendations(sessions as any[], skillBreakdown as any);
@@ -482,6 +550,18 @@ function calculateCompletionRate(sessions: any[]) {
   const totalQuestions = sessions.reduce((sum, session) => sum + session.sessionAnalytics.totalQuestions, 0);
   const answeredQuestions = sessions.reduce((sum, session) => sum + session.sessionAnalytics.answeredQuestions, 0);
   return totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+}
+
+function calculateImprovementRate(sessions: any[]) {
+  if (sessions.length < 2) return 0;
+  
+  const sortedSessions = sessions.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const midPoint = Math.ceil(sortedSessions.length / 2);
+  const firstHalfAvg = sortedSessions.slice(0, midPoint).reduce((sum, session) => sum + session.performanceMetrics.overallScore, 0) / midPoint;
+  const secondHalfAvg = sortedSessions.slice(midPoint).reduce((sum, session) => sum + session.performanceMetrics.overallScore, 0) / (sortedSessions.length - midPoint);
+  
+  if (firstHalfAvg === 0) return 0;
+  return Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100);
 }
 
 function calculateImprovements(currentSessions: any[], previousSessions: any[]) {

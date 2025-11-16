@@ -41,7 +41,7 @@ const SessionReport = () => {
             <h1 className="text-3xl font-bold text-gray-900">Session Report</h1>
             <p className="text-gray-600">Detailed analytics for this interview session</p>
           </div>
-          <Link to="/progress" className="text-sm text-blue-600">Back to Progress</Link>
+          <Link to="/progress" className="text-sm text-blue-600">Back to Progress (Click to see updated stats)</Link>
         </div>
 
         {loading && <p className="text-sm text-gray-500">Loading...</p>}

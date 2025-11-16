@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, Target, Calendar, Award } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, Target, Calendar, Award, RefreshCw } from "lucide-react";
 import DashboardNav from "@/components/DashboardNav";
 import { progressAPI, authAPI } from "@/lib/api";
 import { Link } from "react-router-dom";
@@ -51,6 +52,48 @@ const Progress = () => {
   const [overallStats, setOverallStats] = useState({ totalSessions: 0, averageScore: 0, improvement: 0, streak: 0 });
   const [skillBreakdown, setSkillBreakdown] = useState<SkillItem[]>([]);
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchProgress = async (id: string) => {
+    try {
+      console.log('Fetching progress for user:', id);
+      const progressResp = await progressAPI.getUserProgress(id, '30d');
+      const p = progressResp.data;
+      
+      console.log('Progress response:', p);
+      
+      const totalSessions = p?.overallProgress?.totalInterviews ?? 0;
+      const averageScore = p?.overallProgress?.averageScore ?? 0;
+      const improvement = p?.overallProgress?.improvementRate ?? 0;
+      const streak = calculateDayStreak(p?.recentSessions ?? []) ?? 0;
+      
+      // Map skill breakdown
+      const skills: SkillItem[] = [];
+      if (p?.skillBreakdown) {
+        if (p.skillBreakdown.communication) skills.push({ skill: 'Communication', current: p.skillBreakdown.communication.score ?? 0, target: 90, improvement: 0 });
+        if (p.skillBreakdown.technical) skills.push({ skill: 'Technical Knowledge', current: p.skillBreakdown.technical.score ?? 0, target: 85, improvement: 0 });
+        if (p.skillBreakdown.behavioral) skills.push({ skill: 'Behavioral', current: p.skillBreakdown.behavioral.score ?? 0, target: 85, improvement: 0 });
+      }
+      
+      // Recent sessions
+      const sessions: RecentSession[] = (p?.recentSessions ?? []).map((s: { id?: string; _id?: string; jobTitle?: string; date?: string; overallScore?: number }) => ({
+        id: String(s.id ?? s._id ?? ''),
+        date: new Date(s.date || Date.now()).toISOString().slice(0, 10),
+        role: s.jobTitle ?? 'Interview',
+        score: s.overallScore ?? 0,
+        duration: undefined,
+        improvement: undefined,
+      }));
+      
+      console.log('Updating state with:', { totalSessions, averageScore, improvement, streak });
+      setOverallStats({ totalSessions, averageScore, improvement, streak });
+      setSkillBreakdown(skills);
+      setRecentSessions(sessions);
+    } catch (error) {
+      console.error('Error fetching progress:', error);
+      // Keep defaults on error
+    }
+  };
 
   useEffect(() => {
     const run = async () => {
@@ -63,49 +106,27 @@ const Progress = () => {
           return; 
         }
         setUserId(id);
-        
-        console.log('Fetching progress for user:', id);
-        const progressResp = await progressAPI.getUserProgress(id, '30d');
-        const p = progressResp.data;
-        
-        console.log('Progress response:', p);
-        
-        const totalSessions = p?.overallProgress?.totalInterviews ?? 0;
-        const averageScore = p?.overallProgress?.averageScore ?? 0;
-        const improvement = p?.overallProgress?.improvementRate ?? 0;
-        const streak = calculateDayStreak(p?.recentSessions ?? []) ?? 0;
-        
-        // Map skill breakdown
-        const skills: SkillItem[] = [];
-        if (p?.skillBreakdown) {
-          if (p.skillBreakdown.communication) skills.push({ skill: 'Communication', current: p.skillBreakdown.communication.score ?? 0, target: 90, improvement: 0 });
-          if (p.skillBreakdown.technical) skills.push({ skill: 'Technical Knowledge', current: p.skillBreakdown.technical.score ?? 0, target: 85, improvement: 0 });
-          if (p.skillBreakdown.behavioral) skills.push({ skill: 'Behavioral', current: p.skillBreakdown.behavioral.score ?? 0, target: 85, improvement: 0 });
-        }
-        
-        // Recent sessions
-        const sessions: RecentSession[] = (p?.recentSessions ?? []).map((s: { id?: string; _id?: string; jobTitle?: string; date?: string; overallScore?: number }) => ({
-          id: String(s.id ?? s._id ?? ''),
-          date: new Date(s.date || Date.now()).toISOString().slice(0, 10),
-          role: s.jobTitle ?? 'Interview',
-          score: s.overallScore ?? 0,
-          duration: undefined,
-          improvement: undefined,
-        }));
-        
-        console.log('Updating state with:', { totalSessions, averageScore, improvement, streak });
-        setOverallStats({ totalSessions, averageScore, improvement, streak });
-        setSkillBreakdown(skills);
-        setRecentSessions(sessions);
-      } catch (error) {
-        console.error('Error fetching progress:', error);
-        // Keep defaults on error
+        await fetchProgress(id);
       } finally {
         setLoading(false);
       }
     };
     void run();
   }, []);
+
+  // Auto-refresh data when page comes into focus
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && userId && !loading) {
+        console.log('Page came into focus, refreshing progress data...');
+        setRefreshing(true);
+        fetchProgress(userId).finally(() => setRefreshing(false));
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [userId, loading]);
 
   const achievements = [
     { id: 1, title: "First Interview", description: "Completed your first mock interview", earned: (overallStats.totalSessions > 0), date: new Date().toISOString().slice(0,10) },
@@ -123,9 +144,26 @@ const Progress = () => {
       <DashboardNav />
       
       <main className="container mx-auto px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Progress Tracking</h1>
-          <p className="text-gray-600">Monitor your improvement and celebrate your achievements</p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Progress Tracking</h1>
+            <p className="text-gray-600">Monitor your improvement and celebrate your achievements</p>
+          </div>
+          <Button 
+            onClick={() => {
+              if (userId) {
+                setRefreshing(true);
+                fetchProgress(userId).finally(() => setRefreshing(false));
+              }
+            }}
+            variant="outline"
+            size="sm"
+            disabled={refreshing}
+            className="gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
         </div>
 
         {/* Overall Stats */}

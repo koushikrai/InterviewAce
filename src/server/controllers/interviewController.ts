@@ -1,17 +1,24 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Request, Response } from 'express';
+import express, { Request, Response } from 'express';
 import InterviewSession from '../../models/interviewModel.js';
 import FeedbackLog from '../../models/feedbackLogModel.js';
 import { generateInterviewQuestions, getAnswerFeedback } from '../services/aiService.js';
 import { Types } from 'mongoose';
 
-export const startInterview = async (req: Request, res: Response) => {
+export const startInterview = async (req: express.Request, res: express.Response) => {
   try {
-    const { jobTitle, mode, difficulty = 'medium', numQuestions = 5, resumeData, userId: bodyUserId } = req.body as any;
+    const { jobTitle, mode, difficulty = 'medium', numQuestions = 5, resumeData } = req.body as any;
+    const userId = (req as any).userId;
 
     if (!jobTitle || !mode) {
       return res.status(400).json({ message: 'Job title and mode are required' });
     }
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
+    console.log(`Starting interview for userId: ${userId}, jobTitle: ${jobTitle}`);
 
     // Generate interview questions using AI service
     const questionsResponse = await generateInterviewQuestions(jobTitle, resumeData, difficulty, numQuestions);
@@ -22,7 +29,7 @@ export const startInterview = async (req: Request, res: Response) => {
 
     // Create interview session with enhanced tracking
     const session = new InterviewSession({
-      userId: (req as any).userId || bodyUserId,
+      userId,
       jobTitle,
       mode,
       sessionAnalytics: {
@@ -69,6 +76,8 @@ export const startInterview = async (req: Request, res: Response) => {
 
     await session.save();
 
+    console.log(`Interview session created: ${session._id}, userId: ${session.userId}, jobTitle: ${jobTitle}`);
+
     res.json({
       sessionId: session._id,
       questions: (questionsResponse as any).questions,
@@ -107,6 +116,7 @@ export const submitAnswer = async (req: Request, res: Response) => {
     });
 
     await feedbackLog.save();
+    console.log(`Feedback log saved: ${feedbackLog._id}, score: ${(feedbackResponse as any).score}`);
 
     // Update interview session with feedback
     const session = await InterviewSession.findById(sessionId);
@@ -124,6 +134,8 @@ export const submitAnswer = async (req: Request, res: Response) => {
     
     session.feedbackLogIds.push(feedbackLog._id as Types.ObjectId);
     session.sessionAnalytics.answeredQuestions += 1;
+    
+    console.log(`Session ${sessionId} updated: answeredQuestions=${session.sessionAnalytics.answeredQuestions}, totalFeedbacks=${session.feedbackLogIds.length}`);
 
     // Update performance metrics
     const currentMetrics = session.performanceMetrics;
@@ -170,6 +182,7 @@ export const submitAnswer = async (req: Request, res: Response) => {
     await generateProgressInsights(session);
 
     await session.save();
+    console.log(`Session ${sessionId} saved successfully with userId: ${session.userId}`);
 
     res.json({
       feedback: feedbackResponse,
