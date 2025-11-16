@@ -1,274 +1,209 @@
-
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Upload as UploadIcon, FileText, CheckCircle, AlertCircle } from "lucide-react";
+import { Upload as UploadIcon, CheckCircle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DashboardNav from "@/components/DashboardNav";
 import { resumeAPI } from "@/lib/api";
 import { withApiFallback } from "@/lib/apiFallback";
 import type { AxiosResponse } from "axios";
 
-const Upload = () => {
-  const [uploadStep, setUploadStep] = useState<'upload' | 'analyzing' | 'results'>('upload');
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  type AnalysisResults = {
-    score: number;
-    strengths: string[];
-    improvements: string[];
-    keywordMatch?: number;
-    suggestions: string[];
-    skillGaps?: string[];
-    atsScore?: {
-      overall: number;
-      technical: number;
-      soft: number;
-      formatting: number;
-    };
-    jobMatch?: {
-      skillsMatch: number;
-      experienceMatch: boolean;
-      educationMatch: boolean;
-      overallMatch: boolean;
-    };
-    note?: string;
+// ...existing code...
+
+type AnalysisResults = {
+  score: number;
+  strengths: string[];
+  improvements: string[];
+  keywordMatch?: number;
+  suggestions: string[];
+  skillGaps?: string[];
+  atsScore?: {
+    overall: number;
+    technical: number;
+    soft: number;
+    formatting: number;
   };
-  const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [jobDescription, setJobDescription] = useState("");
-  const [isComposingJD, setIsComposingJD] = useState(false);
-  const [jobTitle, setJobTitle] = useState("");
-  const jobTitleRef = useRef<HTMLInputElement>(null);
-  const jobDescriptionRef = useRef<HTMLTextAreaElement>(null);
-
-  const { toast } = useToast();
-
-  const handleFileUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!selectedFile) {
-      toast({
-        title: "Resume required",
-        description: "Please select a file to upload.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const runSimulation = () => {
-      setUploadStep('analyzing');
-      const interval = setInterval(() => {
-        setAnalysisProgress((prev) => {
-          if (prev >= 100) {
-            clearInterval(interval);
-            setUploadStep('results');
-            setAnalysisResults({
-              score: 78,
-              strengths: [
-                "Strong technical skills section",
-                "Clear work experience progression", 
-                "Relevant education background"
-              ],
-              improvements: [
-                "Add more quantifiable achievements",
-                "Include relevant keywords for the target role",
-                "Expand on project descriptions"
-              ],
-              keywordMatch: 65,
-              suggestions: [
-                "Add 'React.js' and 'Node.js' to skills section",
-                "Include metrics in job descriptions (e.g., 'Improved performance by 25%')",
-                "Add a professional summary section"
-              ]
-            });
-            return 100;
-          }
-          return prev + 10;
-        });
-      }, 300);
-    };
-
-    try {
-      // Try real API path first
-      const formData = new FormData();
-      formData.append('resume', selectedFile);
-
-      type UploadResponse = { id?: string; resumeId?: string };
-      const uploadResponse = await withApiFallback<AxiosResponse<UploadResponse> | null>(
-        () => resumeAPI.upload(formData) as Promise<AxiosResponse<UploadResponse>>,
-        null,
-        {
-          isUnreachable: (error: unknown) => {
-            const hasResponse = typeof error === 'object' && error !== null && 'response' in error;
-            const status = hasResponse ? (error as { response?: { status?: number } }).response?.status : undefined;
-            return !hasResponse || status === 404 || status === 501 || status === 503;
-          },
-        }
-      );
-
-      if (!uploadResponse) {
-        runSimulation();
-        return;
-      }
-
-      const uploadedId = uploadResponse.data.id ?? uploadResponse.data.resumeId ?? "";
-
-      const analyzeResponse = await withApiFallback<AxiosResponse<AnalysisResults> | null>(
-        () => resumeAPI.analyze(uploadedId, jobDescription, jobTitle || undefined) as Promise<AxiosResponse<AnalysisResults>>,
-        null,
-        {
-          isUnreachable: (error: unknown) => {
-            const hasResponse = typeof error === 'object' && error !== null && 'response' in error;
-            const status = hasResponse ? (error as { response?: { status?: number } }).response?.status : undefined;
-            return !hasResponse || status === 404 || status === 501 || status === 503;
-          },
-        }
-      );
-
-      if (!analyzeResponse || typeof analyzeResponse.data?.score !== 'number') {
-        runSimulation();
-        return;
-      }
-
-      setUploadStep('analyzing');
-      setAnalysisProgress(100);
-      setAnalysisResults(analyzeResponse.data);
-      setUploadStep('results');
-    } catch (error) {
-      runSimulation();
-    }
+  jobMatch?: {
+    skillsMatch: number;
+    experienceMatch: boolean;
+    educationMatch: boolean;
+    overallMatch: boolean;
   };
+  note?: string;
+};
 
-  const UploadForm = () => (
-    <Card className="max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <UploadIcon className="w-5 h-5" />
-          Resume Analysis
-        </CardTitle>
-        <CardDescription>
-          Upload your resume and optionally a job description for personalized feedback
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleFileUpload} noValidate className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="resume">Resume (PDF, DOCX)</Label>
-            {/* <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
-              <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" /> */}
-              <div className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-              selectedFile 
-                ? 'border-green-400 bg-green-50' 
-                : 'border-gray-300 hover:border-blue-400'
-            }`}>
-              {selectedFile ? (
-                <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
-              ) : (
-                <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              )}
-              <Input
-                id="resume"
-                name="resume"
-                type="file"
-                accept=".pdf,.docx,.doc"
-                className="hidden"
-                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-              />
-              <Label htmlFor="resume" className="cursor-pointer">
-                {/* <span className="text-blue-600 hover:text-blue-800">Click to upload resume</span>
-                <span className="text-gray-600"> or drag and drop</span> */}
-                {selectedFile ? (
-                  <span className="text-green-600 font-medium">File uploaded: {selectedFile.name}</span>
-                ) : (
-                  <>
-                    <span className="text-blue-600 hover:text-blue-800">Click to upload resume</span>
-                    <span className="text-gray-600"> or drag and drop</span>
-                  </>
-                )}
-              </Label>
-              <p className="text-sm text-gray-500 mt-2">PDF, DOCX up to 10MB</p>
-            </div>
-          </div>
+// UploadForm moved OUTSIDE to avoid remount on parent state changes
+const UploadForm = ({
+  selectedFile,
+  onFileChange,
+  jobTitle,
+  onJobTitleChange,
+  jobDescription,
+  onJobDescriptionChange,
+  jobTitleRef,
+  jobDescriptionRef,
+  handleFileUpload,
+}: {
+  selectedFile: File | null;
+  onFileChange: (f: File | null) => void;
+  jobTitle: string;
+  onJobTitleChange: (v: string) => void;
+  jobDescription: string;
+  onJobDescriptionChange: (v: string) => void;
+  jobTitleRef: React.RefObject<HTMLInputElement>;
+  jobDescriptionRef: React.RefObject<HTMLTextAreaElement>;
+  handleFileUpload: (e: React.FormEvent) => Promise<void> | void;
+}) => (
+  <Card className="max-w-2xl mx-auto">
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <UploadIcon className="w-5 h-5" />
+        Resume Analysis
+      </CardTitle>
+      <CardDescription>
+        Upload your resume and optionally a job description for personalized feedback
+      </CardDescription>
+    </CardHeader>
 
-          <div className="space-y-2">
-            <Label htmlFor="jobTitle">Target Job Title (Optional)</Label>
-            <Input
-              ref={jobTitleRef}
-              id="jobTitle"
-              autoFocus
-              placeholder="e.g., Senior Software Engineer"
-              value={jobTitle}
-              onChange={(e) => {
-                setJobTitle(e.target.value);
-              }}
-              disabled={false}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="jobDescription">Job Description (Optional)</Label>
-            <Textarea
-              ref={jobDescriptionRef}
-              id="jobDescription"
-              autoFocus={false}
-              placeholder="Paste the job description here to get targeted feedback..."
-              rows={6}
-              className="resize-none"
-              value={jobDescription}
-              onChange={(e) => {
-                setJobDescription(e.target.value);
-              }}
-              disabled={false}
-            />
-            <p className="text-sm text-gray-500">
-              Adding a job description helps us provide more targeted suggestions
-            </p>
-          </div>
-
-          <Button type="submit" className="w-full">
-            Analyze Resume
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-
-  const AnalyzingView = () => (
-    <Card className="max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle className="text-center">Analyzing Your Resume</CardTitle>
-        <CardDescription className="text-center">
-          Our AI is reviewing your resume and generating personalized feedback
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex justify-center">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        </div>
+    <CardContent>
+      <form onSubmit={handleFileUpload} noValidate className="space-y-6">
         <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Analysis Progress</span>
-            <span>{analysisProgress}%</span>
-          </div>
-          <Progress value={analysisProgress} className="w-full" />
-        </div>
-        <div className="text-center text-sm text-gray-600">
-          {analysisProgress < 30 && "Parsing resume content..."}
-          {analysisProgress >= 30 && analysisProgress < 60 && "Analyzing skills and experience..."}
-          {analysisProgress >= 60 && analysisProgress < 90 && "Generating recommendations..."}
-          {analysisProgress >= 90 && "Finalizing results..."}
-        </div>
-      </CardContent>
-    </Card>
-  );
+          <Label htmlFor="resume">Resume (PDF, DOCX)</Label>
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              selectedFile ? "border-green-400 bg-green-50" : "border-gray-300 hover:border-blue-400"
+            }`}
+          >
+            {selectedFile ? (
+              <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
+            ) : (
+              <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            )}
 
-  const ResultsView = () => (
+            <Input
+              id="resume"
+              name="resume"
+              type="file"
+              accept=".pdf,.docx,.doc"
+              className="hidden"
+              onChange={(e) => onFileChange(e.target.files?.[0] || null)}
+            />
+            <Label htmlFor="resume" className="cursor-pointer">
+              {selectedFile ? (
+                <span className="text-green-600 font-medium">File uploaded: {selectedFile.name}</span>
+              ) : (
+                <>
+                  <span className="text-blue-600 hover:text-blue-800">Click to upload resume</span>
+                  <span className="text-gray-600"> or drag and drop</span>
+                </>
+              )}
+            </Label>
+            <p className="text-sm text-gray-500 mt-2">PDF, DOCX up to 10MB</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="resume-analysis-jobTitle">Target Job Title (Optional)</Label>
+          <Input
+            ref={jobTitleRef}
+            id="resume-analysis-jobTitle"
+            name="resume-analysis-jobTitle"
+            autoFocus
+            placeholder="e.g., Senior Software Engineer"
+            value={jobTitle}
+            onChange={(e) => onJobTitleChange(e.target.value)}
+            disabled={false}
+            dir="ltr"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="resume-analysis-jobDescription">Job Description (Optional)</Label>
+          <Textarea
+            ref={jobDescriptionRef}
+            id="resume-analysis-jobDescription"
+            name="resume-analysis-jobDescription"
+            placeholder="Paste the job description here to get targeted feedback..."
+            rows={6}
+            className="resize-none"
+            value={jobDescription}
+            onChange={(e) => onJobDescriptionChange(e.target.value)}
+            disabled={false}
+            dir="ltr"
+          />
+          <p className="text-sm text-gray-500">
+            Adding a job description helps us provide more targeted suggestions
+          </p>
+        </div>
+
+        <Button type="submit" className="w-full">
+          Analyze Resume
+        </Button>
+      </form>
+    </CardContent>
+  </Card>
+);
+
+// AnalyzingView moved outside
+const AnalyzingView = ({ analysisProgress }: { analysisProgress: number }) => (
+  <Card className="max-w-2xl mx-auto">
+    <CardHeader>
+      <CardTitle className="text-center">Analyzing Your Resume</CardTitle>
+      <CardDescription className="text-center">
+        Our AI is reviewing your resume and generating personalized feedback
+      </CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-6">
+      <div className="flex justify-center">
+        <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="flex justify-between text-sm">
+          <span>Analysis Progress</span>
+          <span>{analysisProgress}%</span>
+        </div>
+        <Progress value={analysisProgress} className="w-full" />
+      </div>
+      <div className="text-center text-sm text-gray-600">
+        {analysisProgress < 30 && "Parsing resume content..."}
+        {analysisProgress >= 30 && analysisProgress < 60 && "Analyzing skills and experience..."}
+        {analysisProgress >= 60 && analysisProgress < 90 && "Generating recommendations..."}
+        {analysisProgress >= 90 && "Finalizing results..."}
+      </div>
+    </CardContent>
+  </Card>
+);
+
+// ResultsView moved outside
+const ResultsView = ({
+  analysisResults,
+  onUploadNew,
+}: {
+  analysisResults: AnalysisResults | null;
+  onUploadNew: () => void;
+}) => {
+  if (!analysisResults) {
+    return (
+      <Card className="max-w-4xl mx-auto">
+        <CardHeader>
+          <CardTitle className="text-red-600">Analysis Failed</CardTitle>
+          <CardDescription>Something went wrong during the analysis. Please try again.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={onUploadNew} variant="outline">
+            Upload New Resume
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Overall Score */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -282,15 +217,16 @@ const Upload = () => {
             <div>
               <p className="text-lg font-semibold">Overall Resume Score</p>
               <p className="text-gray-600">
-                {analysisResults.score >= 80 ? 'Excellent! Your resume is well-optimized' :
-                 analysisResults.score >= 60 ? 'Good foundation with room for improvement' :
-                 'Needs significant improvement to pass ATS screening'}
+                {analysisResults.score >= 80
+                  ? "Excellent! Your resume is well-optimized"
+                  : analysisResults.score >= 60
+                  ? "Good foundation with room for improvement"
+                  : "Needs significant improvement to pass ATS screening"}
               </p>
             </div>
           </div>
           <Progress value={analysisResults.score} className="w-full" />
-          
-          {/* ATS Score Breakdown */}
+
           {analysisResults.atsScore && (
             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 bg-blue-50 rounded-lg">
@@ -314,7 +250,6 @@ const Upload = () => {
         </CardContent>
       </Card>
 
-      {/* Job Matching Analysis */}
       {analysisResults.jobMatch && (
         <Card>
           <CardHeader>
@@ -322,9 +257,7 @@ const Upload = () => {
               <CheckCircle className="w-5 h-5 text-blue-600" />
               Job Requirements Match
             </CardTitle>
-            <CardDescription>
-              How well your resume aligns with the job description
-            </CardDescription>
+            <CardDescription>How well your resume aligns with the job description</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid md:grid-cols-2 gap-6">
@@ -334,31 +267,37 @@ const Upload = () => {
                   <span className="text-lg font-bold text-blue-600">{analysisResults.jobMatch.skillsMatch}%</span>
                 </div>
                 <Progress value={analysisResults.jobMatch.skillsMatch} className="w-full" />
-                
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Experience Level</span>
-                  <span className={`text-sm font-medium ${analysisResults.jobMatch.experienceMatch ? 'text-green-600' : 'text-orange-600'}`}>
-                    {analysisResults.jobMatch.experienceMatch ? '✓ Matched' : '⚠ Needs More'}
+                  <span
+                    className={`text-sm font-medium ${
+                      analysisResults.jobMatch.experienceMatch ? "text-green-600" : "text-orange-600"
+                    }`}
+                  >
+                    {analysisResults.jobMatch.experienceMatch ? "✓ Matched" : "⚠ Needs More"}
                   </span>
                 </div>
-                
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Education</span>
-                  <span className={`text-sm font-medium ${analysisResults.jobMatch.educationMatch ? 'text-green-600' : 'text-orange-600'}`}>
-                    {analysisResults.jobMatch.educationMatch ? '✓ Matched' : '⚠ Check Requirements'}
+                  <span
+                    className={`text-sm font-medium ${
+                      analysisResults.jobMatch.educationMatch ? "text-green-600" : "text-orange-600"
+                    }`}
+                  >
+                    {analysisResults.jobMatch.educationMatch ? "✓ Matched" : "⚠ Check Requirements"}
                   </span>
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <div className="text-center p-4 bg-gray-50 rounded-lg">
                   <div className="text-2xl font-bold text-gray-800 mb-2">
-                    {analysisResults.jobMatch.overallMatch ? 'Strong Match' : 'Needs Work'}
+                    {analysisResults.jobMatch.overallMatch ? "Strong Match" : "Needs Work"}
                   </div>
                   <div className="text-sm text-gray-600">
-                    {analysisResults.jobMatch.overallMatch 
-                      ? 'Your resume aligns well with this position' 
-                      : 'Consider tailoring your resume for better alignment'}
+                    {analysisResults.jobMatch.overallMatch
+                      ? "Your resume aligns well with this position"
+                      : "Consider tailoring your resume for better alignment"}
                   </div>
                 </div>
               </div>
@@ -367,14 +306,11 @@ const Upload = () => {
         </Card>
       )}
 
-      {/* Keyword Match */}
       {analysisResults.keywordMatch && (
         <Card>
           <CardHeader>
             <CardTitle>Keyword Optimization</CardTitle>
-            <CardDescription>
-              ATS keyword matching score for better visibility
-            </CardDescription>
+            <CardDescription>ATS keyword matching score for better visibility</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4 mb-4">
@@ -382,9 +318,11 @@ const Upload = () => {
               <div>
                 <p className="text-lg font-semibold">Keyword Match</p>
                 <p className="text-gray-600">
-                  {analysisResults.keywordMatch >= 80 ? 'Excellent keyword optimization' :
-                   analysisResults.keywordMatch >= 60 ? 'Good keyword coverage' :
-                   'Low keyword match - needs improvement'}
+                  {analysisResults.keywordMatch >= 80
+                    ? "Excellent keyword optimization"
+                    : analysisResults.keywordMatch >= 60
+                    ? "Good keyword coverage"
+                    : "Low keyword match - needs improvement"}
                 </p>
               </div>
             </div>
@@ -394,7 +332,6 @@ const Upload = () => {
       )}
 
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Strengths */}
         <Card>
           <CardHeader>
             <CardTitle className="text-green-600">Strengths</CardTitle>
@@ -411,7 +348,6 @@ const Upload = () => {
           </CardContent>
         </Card>
 
-        {/* Areas for Improvement */}
         <Card>
           <CardHeader>
             <CardTitle className="text-orange-600">Areas for Improvement</CardTitle>
@@ -429,14 +365,11 @@ const Upload = () => {
         </Card>
       </div>
 
-      {/* Skill Gaps */}
       {analysisResults.skillGaps && analysisResults.skillGaps.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-red-600">Identified Skill Gaps</CardTitle>
-            <CardDescription>
-              Skills mentioned in the job description that are missing from your resume
-            </CardDescription>
+            <CardDescription>Skills mentioned in the job description that are missing from your resume</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid md:grid-cols-2 gap-4">
@@ -453,13 +386,10 @@ const Upload = () => {
         </Card>
       )}
 
-      {/* Detailed Suggestions */}
       <Card>
         <CardHeader>
           <CardTitle>Specific Recommendations</CardTitle>
-          <CardDescription>
-            Actionable steps to improve your resume score
-          </CardDescription>
+          <CardDescription>Actionable steps to improve your resume score</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -472,7 +402,6 @@ const Upload = () => {
         </CardContent>
       </Card>
 
-      {/* Note about job description */}
       {analysisResults.note && (
         <Card>
           <CardHeader>
@@ -484,28 +413,218 @@ const Upload = () => {
         </Card>
       )}
 
-      {/* Action Buttons */}
       <div className="flex gap-4 justify-center">
-        <Button onClick={() => setUploadStep('upload')} variant="outline">
+        <Button onClick={onUploadNew} variant="outline">
           Upload New Resume
         </Button>
       </div>
     </div>
   );
+};
+
+// Main Upload component keeps state only (children stable)
+const Upload = () => {
+  const [uploadStep, setUploadStep] = useState<"upload" | "analyzing" | "results">("upload");
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [jobDescription, setJobDescription] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const jobTitleRef = useRef<HTMLInputElement>(null);
+  const jobDescriptionRef = useRef<HTMLTextAreaElement>(null);
+
+  // Animate analysis progress while in the 'analyzing' step:
+  // - 0 -> 50% over 10s
+  // - 50 -> 80% over next 20s
+  // - remain at 80% until analysis completes (then set to 100%)
+  useEffect(() => {
+    if (uploadStep !== 'analyzing') return;
+
+    const phase1 = 10000; // 10s to reach 50%
+    const phase2 = 20000; // next 20s to reach 80%
+    const start = Date.now();
+    let stopped = false;
+
+    const tick = () => {
+      if (stopped) return;
+      const elapsed = Date.now() - start;
+      if (elapsed < phase1) {
+        const p = Math.round((elapsed / phase1) * 50);
+        setAnalysisProgress(p);
+      } else if (elapsed < phase1 + phase2) {
+        const p = 50 + Math.round(((elapsed - phase1) / phase2) * 30); // up to 80
+        setAnalysisProgress(p);
+      } else {
+        setAnalysisProgress(80);
+      }
+      // schedule next tick
+      setTimeout(tick, 250);
+    };
+
+    // start at 0
+    setAnalysisProgress(0);
+    tick();
+
+    return () => { stopped = true; };
+  }, [uploadStep]);
+
+  const { toast } = useToast();
+
+  const handleFileUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedFile) {
+      toast({
+        title: "Resume required",
+        description: "Please select a file to upload.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const runSimulation = () => {
+      setUploadStep("analyzing");
+      let progress = 0;
+      setAnalysisProgress(progress);
+
+      const interval = setInterval(() => {
+        progress += Math.floor(Math.random() * 20) + 10;
+        if (progress >= 100) {
+          clearInterval(interval);
+          setAnalysisProgress(100);
+          setAnalysisResults({
+            score: 78,
+            strengths: [
+              "Strong technical skills section",
+              "Clear work experience progression",
+              "Relevant education background",
+            ],
+            improvements: [
+              "Add more quantifiable achievements",
+              "Include relevant keywords for the target role",
+              "Expand on project descriptions",
+            ],
+            keywordMatch: 65,
+            suggestions: [
+              "Add 'React.js' and 'Node.js' to skills section",
+              "Include metrics in job descriptions (e.g., 'Improved performance by 25%')",
+              "Add a professional summary section",
+            ],
+            skillGaps: ["TypeScript", "GraphQL"],
+            atsScore: { overall: 78, technical: 85, soft: 70, formatting: 90 },
+            jobMatch: { skillsMatch: 65, experienceMatch: true, educationMatch: true, overallMatch: false },
+            note: "This is a fallback simulation. For real analysis, please ensure the backend is running.",
+          });
+          setTimeout(() => setUploadStep("results"), 500);
+        } else {
+          setAnalysisProgress(Math.min(100, progress));
+        }
+      }, 400);
+    };
+
+    try {
+      setUploadStep("analyzing");
+      setAnalysisProgress(0);
+
+      const formData = new FormData();
+      formData.append("resume", selectedFile);
+
+      type UploadResponse = { id?: string; resumeId?: string };
+      const uploadResponse = await withApiFallback<AxiosResponse<UploadResponse> | null>(
+        () => resumeAPI.upload(formData) as Promise<AxiosResponse<UploadResponse>>,
+        null,
+        {
+          isUnreachable: (error: unknown) => {
+            const hasResponse = typeof error === "object" && error !== null && "response" in error;
+            const status = hasResponse ? (error as { response?: { status?: number } }).response?.status : undefined;
+            return !hasResponse || status === 404 || status === 501 || status === 503;
+          },
+        }
+      );
+
+  // progress animation handles interim progress while analyzing
+
+      if (!uploadResponse) {
+        toast({ title: "Upload Failed", description: "Running simulation instead.", variant: "destructive" });
+        runSimulation();
+        return;
+      }
+
+      const uploadedId = uploadResponse.data.id ?? uploadResponse.data.resumeId ?? "";
+
+      if (!uploadedId) {
+        toast({ title: "Upload Error", description: "No resume ID returned. Running simulation.", variant: "destructive" });
+        runSimulation();
+        return;
+      }
+
+  // progress animation handles interim progress while analyzing
+
+      // Call the analyze API once and wait for it to either return results or fail.
+      // Do NOT retry here — if the AI backend ultimately fails the request will throw
+      // and we will fall back to the simulation.
+      try {
+  // progress animation is handling interim states; wait for result
+        const analyzeResponse = await resumeAPI.analyze(uploadedId, jobDescription, jobTitle || undefined) as AxiosResponse<AnalysisResults>;
+        setAnalysisProgress(100);
+
+        if (!analyzeResponse || typeof analyzeResponse.data?.score !== "number") {
+          toast({ title: "Analysis Failed", description: "Could not get results. Running simulation.", variant: "destructive" });
+          runSimulation();
+          return;
+        }
+
+        setAnalysisResults(analyzeResponse.data);
+        setUploadStep("results");
+      } catch (err) {
+        // If the analyze API throws (timeout, 5xx, network), fall back once.
+        setAnalysisProgress(100);
+        toast({ title: "Analysis Failed", description: "AI analysis failed. Running simulation.", variant: "destructive" });
+        runSimulation();
+        return;
+      }
+    } catch (error) {
+      toast({ title: "An Error Occurred", description: "Running simulation instead.", variant: "destructive" });
+      runSimulation();
+    }
+  };
+
+  const handleUploadNew = () => {
+    setUploadStep("upload");
+    setAnalysisProgress(0);
+    setAnalysisResults(null);
+    setSelectedFile(null);
+    setJobDescription("");
+    setJobTitle("");
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardNav />
-      
+
       <main className="container mx-auto px-6 py-8">
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Resume Analysis</h1>
           <p className="text-gray-600">Get AI-powered insights to optimize your resume</p>
         </div>
 
-        {uploadStep === 'upload' && <UploadForm />}
-        {uploadStep === 'analyzing' && <AnalyzingView />}
-        {uploadStep === 'results' && <ResultsView />}
+        {uploadStep === "upload" && (
+          <UploadForm
+            selectedFile={selectedFile}
+            onFileChange={setSelectedFile}
+            jobTitle={jobTitle}
+            onJobTitleChange={setJobTitle}
+            jobDescription={jobDescription}
+            onJobDescriptionChange={setJobDescription}
+            jobTitleRef={jobTitleRef}
+            jobDescriptionRef={jobDescriptionRef}
+            handleFileUpload={handleFileUpload}
+          />
+        )}
+
+        {uploadStep === "analyzing" && <AnalyzingView analysisProgress={analysisProgress} />}
+
+        {uploadStep === "results" && <ResultsView analysisResults={analysisResults} onUploadNew={handleUploadNew} />}
       </main>
     </div>
   );

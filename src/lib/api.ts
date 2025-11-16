@@ -56,7 +56,10 @@ export const resumeAPI = {
     }),
   get: (id: string) => api.get(`/resume/${id}`),
   analyze: (resumeId: string, jobDescription?: string, jobTitle?: string) =>
-    api.post('/resume/analyze', { resumeId, jobDescription, jobTitle }),
+    // This endpoint can be long-running (AI analysis). Override the default
+    // axios timeout here so the frontend will wait longer before treating
+    // the request as failed. Keep default shorter timeouts for other calls.
+    api.post('/resume/analyze', { resumeId, jobDescription, jobTitle }, { timeout: 120000 }),
 };
 
 export const interviewAPI = {
