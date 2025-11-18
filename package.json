@@ -6,7 +6,7 @@
     "dev": "vite",
     "dev:server": "nodemon --watch src/server --watch src/models --ext ts,tsx,js,mjs,cjs,json --exec \"npx tsx src/server/app.ts\"",
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
-    "start-apis": "concurrently \"uvicorn resume_parser:app --host 0.0.0.0 --port 8001\" \"uvicorn interview_generator:app --host 0.0.0.0 --port 8002\" \"uvicorn answer_feedback:app --host 0.0.0.0 --port 8003\"",
+    "start-apis": "concurrently \"uvicorn resume_parser:app --host 0.0.0.0 --port 8001\" \"uvicorn interview_generator:app --host 0.0.0.0 --port 8002\" \"uvicorn answer_feedback:app --host 0.0.0.0 --port 8003\" \"uvicorn voice_stt:app --host 0.0.0.0 --port 5000\"",
     "monitor:ai": "node src/server/monitor-ai-services.js",
     "build": "vite build",
     "build:server": "tsc -p tsconfig.server.json",

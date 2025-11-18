@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Mic, MicOff, SkipForward, MessageSquare, Volume2, Clipboard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DashboardNav from "@/components/DashboardNav";
-import { interviewAPI } from "@/lib/api";
+import { interviewAPI, voiceAPI } from "@/lib/api";
 import { withApiFallback } from "@/lib/apiFallback";
 import type { AxiosResponse } from "axios";
 import { useNavigate } from "react-router-dom";
@@ -350,12 +350,36 @@ export const ActiveInterview = ({
                 </div>
                 <p className="text-sm text-gray-600">{isRecording ? "Recording... Click to stop" : "Click to start recording"}</p>
               </div>
+              
               {userAnswer && (
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg text-left">
-                  <label className="text-sm font-medium text-gray-700">Transcription:</label>
-                  <p className="mt-1 text-sm">{userAnswer}</p>
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-blue-900">Transcription</label>
+                    <span className="text-xs text-blue-700">Edit below to refine</span>
+                  </div>
+                  <p className="text-sm text-gray-700 p-3 bg-white rounded border border-gray-200">{userAnswer}</p>
                 </div>
               )}
+              
+              {/* Always show textarea in voice mode for editing */}
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                <label className="text-sm font-medium text-gray-700 block">
+                  {userAnswer ? "Edit Your Answer" : "Your Answer (will appear after recording)"}
+                </label>
+                <Textarea
+                  ref={textareaRef}
+                  value={userAnswer}
+                  onChange={(e) => setUserAnswer(e.target.value)}
+                  placeholder="Your transcribed text will appear here. Edit to correct any mistakes or add details..."
+                  rows={6}
+                  className="resize-none"
+                  spellCheck="true"
+                  autoFocus={!!userAnswer}
+                />
+                <p className="text-xs text-gray-600">
+                  {userAnswer ? "✏️ Feel free to correct any mistakes or add more details" : "📝 Record your response using the button above"}
+                </p>
+              </div>
             </div>
           )}
 
@@ -628,17 +652,19 @@ const Interview = () => {
         mr.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) {
             localChunks.push(e.data);
-            setChunks((prev) => [...prev, e.data]);
-            if (sttTimer) window.clearTimeout(sttTimer);
-            const timer = window.setTimeout(() => void sendAudioChunk(localChunks.splice(0, localChunks.length)), 500);
-            setSttTimer(timer);
           }
         };
         mr.onstop = () => {
           stream.getTracks().forEach(t => t.stop());
-          if (sttTimer) window.clearTimeout(sttTimer);
+          // Send all collected chunks as one complete WebM file after recording stops
+          if (localChunks.length > 0) {
+            console.log(`Recording stopped. Sending ${localChunks.length} chunks for transcription.`);
+            void sendAudioChunk(localChunks);
+          } else {
+            toast({ title: 'No audio recorded', description: 'Please speak and try again.', variant: 'destructive' });
+          }
         };
-        mr.start(250);
+        mr.start(); // No timeslice - collect all data until stop
         setMediaRecorder(mr);
         setIsRecording(true);
         toast({ title: "Recording started", description: "Speak your answer clearly. Click stop when finished.", });
@@ -648,27 +674,100 @@ const Interview = () => {
     } else {
       mediaRecorder?.stop();
       setIsRecording(false);
-      toast({ title: "Recording stopped", description: "You can edit the transcribed text before submitting.", });
+      toast({ title: "Recording stopped", description: "Processing your audio...", });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRecording, mediaRecorder, sttTimer, toast]);
+  }, [isRecording, mediaRecorder, toast]);
 
   const sendAudioChunk = useCallback(async (blobParts: Blob[]) => {
     if (sttBusy || blobParts.length === 0) return;
     try {
       setSttBusy(true);
-      const blob = new Blob(blobParts, { type: 'audio/webm' });
-      const form = new FormData();
-      form.append('audio', blob, 'chunk.webm');
-      const resp = await api.post('/interview/stt', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-      const t = (resp.data?.transcript as string) || '';
-      if (t) setUserAnswer((prev) => (prev ? `${prev} ${t}` : t));
-    } catch {
-      // ignore STT errors in UI
+      // Combine all chunks into one complete WebM file
+      const blob = new Blob(blobParts, { type: 'audio/webm;codecs=opus' });
+      console.log(`Sending complete recording: ${blob.size} bytes, ${blobParts.length} chunks`);
+      
+      if (blob.size < 10000) {
+        console.warn(`Audio file too small: ${blob.size} bytes`);
+        toast({ 
+          title: 'Recording too short',
+          description: 'Record at least 3-5 seconds and speak clearly.',
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      const resp = await voiceAPI.stt(blob);
+      
+      if (!resp.data) {
+        console.error('No response data from STT service');
+        toast({ title: 'Error', description: 'No response from voice service', variant: 'destructive' });
+        return;
+      }
+      
+      const transcript = (resp.data?.transcript as string) || '';
+      console.log(`STT Response: "${transcript}"`);
+      
+      if (!transcript) {
+        console.warn('Empty transcript received');
+        toast({ title: 'No speech detected', description: 'Please speak clearly and try again.', variant: 'destructive' });
+        return;
+      }
+      
+      if (transcript === '[No speech detected]') {
+        console.warn('Service returned: No speech detected');
+        toast({ title: 'No speech detected', description: 'Please speak clearly and try again.', variant: 'destructive' });
+        return;
+      }
+      
+      // Successfully got transcript - update answer
+      console.log('Setting user answer with transcript:', transcript);
+      setUserAnswer((prev) => {
+        const newAnswer = prev ? `${prev} ${transcript}` : transcript;
+        console.log('New answer:', newAnswer);
+        return newAnswer;
+      });
+      
+      // Auto-focus textarea for easy editing after voice transcription
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.scrollIntoView({ behavior: 'smooth' });
+          // Move cursor to end of text
+          textareaRef.current.selectionStart = textareaRef.current.value.length;
+          textareaRef.current.selectionEnd = textareaRef.current.value.length;
+        }
+      }, 100);
+      
+      toast({ title: 'Transcribed', description: 'Edit your answer before submitting.', });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`STT Error: ${errorMsg}`);
+      
+      // Check for common issues
+      if (errorMsg.includes('ECONNREFUSED')) {
+        console.error('Voice service not running. Start with: npm run start-apis');
+        toast({ 
+          title: 'Voice service unavailable',
+          description: 'Start services: npm run start-apis',
+          variant: 'destructive'
+        });
+      } else if (errorMsg.includes('too small') || errorMsg.includes('too short') || errorMsg.includes('Invalid data')) {
+        toast({ 
+          title: 'Audio recording failed',
+          description: 'Record at least 3-5 seconds of audio. If problem persists, try a different browser.',
+          variant: 'destructive'
+        });
+      } else {
+        toast({ 
+          title: 'Transcription failed',
+          description: errorMsg || 'Unknown error',
+          variant: 'destructive'
+        });
+      }
     } finally {
       setSttBusy(false);
     }
-  }, [sttBusy]);
+  }, [sttBusy, toast]);
 
   const resetInterview = useCallback(() => {
     setInterviewStep('setup');

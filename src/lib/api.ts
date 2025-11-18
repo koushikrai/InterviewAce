@@ -77,4 +77,43 @@ export const progressAPI = {
     api.get(`/progress/session/${sessionId}`),
 };
 
+// Voice STT API (runs on dedicated port 5000)
+const voiceApiBase = axios.create({
+  baseURL: import.meta.env.VITE_VOICE_API_URL || 'http://localhost:5000',
+  timeout: 120000, // 120s timeout for transcription (model loading + processing)
+});
+
+// Add response interceptor for voice API
+voiceApiBase.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.code === 'ECONNREFUSED') {
+      console.error('Voice STT service not running on port 5000. Start with: npm run start-apis');
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const voiceAPI = {
+  stt: (audioBlob: Blob) => {
+    const formData = new FormData();
+    // Use WebM mime type with opus codec as recorded by browser
+    formData.append('audio', audioBlob, 'chunk.webm');
+    return voiceApiBase.post('/interview/stt', formData, {
+      headers: {
+        // Let axios set Content-Type automatically for FormData
+        // This preserves the multipart/form-data boundary
+      },
+      onUploadProgress: (progressEvent) => {
+        // Can be used to show upload progress if needed
+        if (progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+          console.debug(`Audio upload: ${percent}%`);
+        }
+      },
+    });
+  },
+  health: () => voiceApiBase.get('/health'),
+};
+
 export default api; 
