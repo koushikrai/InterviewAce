@@ -3,11 +3,21 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 import os
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple, Callable
 import json
 import PyPDF2
 from docx import Document
 import io
+import re
+
+# Try to import torch for ML model (optional)
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    torch = None  # type: ignore
+
 try:
     from knowledge_base import KnowledgeBase  # optional RAG
 except Exception:
@@ -92,6 +102,208 @@ def _load_role_profile(job_title: str | None) -> dict:
     return {}
 
 
+def _load_ml_parser() -> Tuple[Optional[Callable], Optional[Callable]]:
+    """Load ML resume parser model if available."""
+    if not TORCH_AVAILABLE:
+        return None, None
+    
+    try:
+        model_path = os.path.join(os.path.dirname(__file__), "models", "resume_parser_ml", "model.pt")
+        if not os.path.exists(model_path):
+            return None, None
+        
+        checkpoint = torch.load(model_path, map_location='cpu')
+        vocab = checkpoint.get("vocab", {})
+        skill_vocab = checkpoint.get("skill_vocab", {})
+        input_dim = checkpoint.get("input_dim", len(vocab))
+        num_skills = checkpoint.get("num_skills", len(skill_vocab))
+        
+        # Load model architecture (define locally to avoid circular import)
+        class TinyResumeParser(torch.nn.Module):
+            def __init__(self, input_dim: int, num_skills: int):
+                super().__init__()
+                self.encoder = torch.nn.Sequential(
+                    torch.nn.Linear(input_dim, 256),
+                    torch.nn.ReLU(),
+                    torch.nn.Dropout(0.2),
+                    torch.nn.Linear(256, 128),
+                    torch.nn.ReLU()
+                )
+                self.skills_head = torch.nn.Linear(128, num_skills)
+                self.score_head = torch.nn.Linear(128, 1)
+            
+            def forward(self, x: torch.Tensor):
+                encoded = self.encoder(x)
+                skills_logits = self.skills_head(encoded)
+                score = self.score_head(encoded)
+                return skills_logits, score.squeeze(-1)
+        
+        model = TinyResumeParser(input_dim, num_skills)
+        model.load_state_dict(checkpoint["state_dict"])
+        model.eval()
+        
+        def vectorize_text(text: str) -> torch.Tensor:
+            """Vectorize text using vocab."""
+            vec = torch.zeros(len(vocab), dtype=torch.float32)
+            for token in text.lower().split():
+                if token in vocab:
+                    vec[vocab[token]] += 1.0
+            return vec
+        
+        def parse_fn(text: str) -> Dict[str, Any]:
+            """Parse resume text using ML model."""
+            with torch.no_grad():
+                x = vectorize_text(text).unsqueeze(0)
+                skills_logits, score_pred = model(x)
+                
+                # Get predicted skills (sigmoid > 0.5)
+                skills_probs = torch.sigmoid(skills_logits[0])
+                predicted_skill_indices = (skills_probs > 0.5).nonzero(as_tuple=True)[0]
+                predicted_skills = [skill for skill, idx in skill_vocab.items() 
+                                   if idx in predicted_skill_indices.tolist()]
+                
+                # Get predicted score
+                predicted_score = float(score_pred[0].item())
+                predicted_score = max(0, min(100, predicted_score))  # Clamp to 0-100
+                
+                # Calculate confidence based on model output
+                # Higher confidence if skills_probs are well-separated (high or low)
+                skills_confidence = float(torch.mean(torch.abs(skills_probs - 0.5) * 2).item())
+                score_confidence = 1.0 - min(1.0, abs(predicted_score - 50) / 50)  # Higher if score is extreme
+                overall_confidence = (skills_confidence * 0.6 + score_confidence * 0.4)
+                
+                # Extract experience and education using simple keyword matching
+                experience_summary = _extract_experience_keywords(text)
+                education_level = _extract_education_keywords(text)
+                
+                return {
+                    "skills": predicted_skills,
+                    "score": predicted_score,
+                    "experience_summary": experience_summary,
+                    "education_level": education_level,
+                    "confidence": overall_confidence
+                }
+        
+        def confidence_fn(result: Dict[str, Any]) -> float:
+            """Calculate confidence score from ML result."""
+            return result.get("confidence", 0.5)
+        
+        print("ML resume parser loaded successfully")
+        return parse_fn, confidence_fn
+        
+    except Exception as e:
+        print(f"Failed to load ML parser: {e}")
+        return None, None
+
+
+def _extract_experience_keywords(text: str) -> list:
+    """Extract experience using keyword matching."""
+    experience = []
+    # Look for job title patterns
+    title_patterns = [
+        r"(?:Senior|Junior|Lead|Principal)?\s*(?:Software|Data|DevOps|ML|AI|Full.?Stack)?\s*(?:Engineer|Developer|Scientist|Architect|Manager)",
+        r"(?:Software|Data|DevOps|ML|AI|Full.?Stack)?\s*(?:Engineer|Developer|Scientist|Architect|Manager)",
+    ]
+    
+    lines = text.split('\n')
+    for line in lines:
+        for pattern in title_patterns:
+            matches = re.finditer(pattern, line, re.IGNORECASE)
+            for match in matches:
+                exp_text = line.strip()
+                if exp_text and len(exp_text) < 100:  # Reasonable length
+                    experience.append({
+                        "title": match.group(0),
+                        "company": "Unknown",
+                        "duration": "Unknown",
+                        "achievements": []
+                    })
+                    break
+        if len(experience) >= 3:  # Limit to 3
+            break
+    
+    return experience if experience else [{
+        "title": "Software Developer",
+        "company": "Unknown",
+        "duration": "Unknown",
+        "achievements": []
+    }]
+
+
+def _extract_education_keywords(text: str) -> dict:
+    """Extract education using keyword matching."""
+    education_keywords = {
+        "phd": "Ph.D",
+        "ph.d": "Ph.D",
+        "doctorate": "Ph.D",
+        "master": "Master's",
+        "m.e": "Master's",
+        "me": "Master's",
+        "m.s": "Master's",
+        "ms": "Master's",
+        "bachelor": "Bachelor's",
+        "b.e": "Bachelor's",
+        "be": "Bachelor's",
+        "b.s": "Bachelor's",
+        "bs": "Bachelor's"
+    }
+    
+    text_lower = text.lower()
+    for keyword, degree in education_keywords.items():
+        if keyword in text_lower:
+            return {
+                "degree": degree,
+                "institution": "Unknown",
+                "year": "Unknown",
+                "gpa": ""
+            }
+    
+    return {
+        "degree": "Bachelor's",
+        "institution": "Unknown",
+        "year": "Unknown",
+        "gpa": ""
+    }
+
+
+def _parse_resume_ml(text: str, parser_fn: Callable, job_title: str | None = None) -> Dict[str, Any]:
+    """Parse resume using ML model and format to match AI output."""
+    result = parser_fn(text)
+    
+    # Format to match AI output structure
+    formatted = {
+        "skills": result.get("skills", []),
+        "experience": result.get("experience_summary", []),
+        "education": result.get("education_level", {}),
+        "projects": [],  # Not extracted by ML yet
+        "certifications": [],  # Not extracted by ML yet
+        "summary": text[:500] if len(text) > 500 else text,  # Use first 500 chars as summary
+        "contact": {
+            "email": "",
+            "phone": "",
+            "location": "",
+            "linkedin": ""
+        },
+        "confidence": result.get("confidence", 0.5)  # Include confidence for threshold check
+    }
+    
+    return formatted
+
+
+def _apply_role_alignment(parsed_data: Dict[str, Any], role_profile: Dict[str, Any], job_title: str) -> Dict[str, Any]:
+    """Apply role profile alignment checks to parsed data."""
+    must = set([s.lower() for s in role_profile.get("must_have_skills", [])])
+    has = set([s.lower() for s in parsed_data.get("skills", [])])
+    missing = [s for s in role_profile.get("must_have_skills", []) if s.lower() not in has]
+    
+    parsed_data["roleAlignment"] = {
+        "targetRole": role_profile.get("title", job_title),
+        "mustHaveCoverage": round(100 * (len(must.intersection(has)) / max(len(must) or 1, 1))),
+        "missingMustHaves": missing[:10]
+    }
+    return parsed_data
+
+
 @app.post("/parse")
 async def parse_resume(file: UploadFile = File(...), jobTitle: str | None = Form(default=None)):
     try:
@@ -112,7 +324,37 @@ async def parse_resume(file: UploadFile = File(...), jobTitle: str | None = Form
         print(f"Extracted text length: {len(text_content)} characters")
         print(f"Text preview: {text_content[:200]}...")
         
-        # Optional role profile to guide analysis
+        # Try ML parser first
+        ml_parser, confidence_fn = _load_ml_parser()
+        if ml_parser:
+            try:
+                print("Attempting ML-based resume parsing...")
+                ml_result = _parse_resume_ml(text_content, ml_parser, jobTitle)
+                confidence = confidence_fn(ml_result)
+                
+                print(f"ML parsing confidence: {confidence:.2f}")
+                
+                if confidence >= 0.7:  # Confidence threshold
+                    # Apply role profile alignment if jobTitle provided
+                    if jobTitle:
+                        role_profile = _load_role_profile(jobTitle)
+                        if role_profile:
+                            ml_result = _apply_role_alignment(ml_result, role_profile, jobTitle)
+                    
+                    print("ML parsing successful, returning ML results")
+                    return JSONResponse({
+                        "success": True,
+                        "data": ml_result,
+                        "message": "Resume parsed successfully using ML model"
+                    })
+                else:
+                    print(f"ML confidence too low ({confidence:.2f} < 0.7), falling back to AI")
+            except Exception as ml_error:
+                print(f"ML parsing failed, falling back to AI: {ml_error}")
+                # Continue to AI fallback
+        
+        # Fallback to AI service (existing code)
+        print("Using AI service for resume parsing...")
         role_profile = _load_role_profile(jobTitle)
         # Use Gemini AI for comprehensive resume analysis if configured
         model = genai.GenerativeModel(model_name) if api_key else None
